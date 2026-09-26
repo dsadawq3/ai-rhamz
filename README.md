@@ -76,14 +76,12 @@ In stock OpenCode, subagents blindly treat prompts from a parent agent as infall
   - Removed all white/cyan flash animations when opening modals or `Settings` (`packages/tui/src/ui/dialog.tsx`), firing toasts (`ui/toast.tsx`), or typing in the prompt (`component/prompt/index.tsx`, `component/tab-pulse.tsx`).
   - Replaced inverted high-contrast selection bars in `DialogSelect` (`packages/tui/src/ui/dialog-select.tsx`) with a smooth elevated dark highlight (`#191d28`), crisp light text, and a left `▎` accent indicator—eliminating strobing when navigating Settings or menus.
   - Set `animations: false` by default (`packages/tui/src/config/index.tsx`, `cli.json`).
-- **Top Session Control & Swarm HUD Bar (`packages/tui/src/routes/session/index.tsx`)**:
-  - **Left**: 1-click `[☰ Chats]` (`session.list`), `[+ New]` (`session.new`), and live **Swarm Pills** (`[◈ Root]`, `[⟳/▸ Subagent]`, `[⊞ Swarm (N)]`) for instant 1-click switching between the root agent and any running or completed subagent.
-  - **Right**: Interactive `[☑ Todo X/Y]` badge (opens the full session TODO modal on click) and 1-click transcript navigation buttons `[⇈ Top]`, `[▲ Prev]`, `[▼ Next]`, `[⇊ Latest]`.
+- **Minimal Contextual Swarm & Scroll Strip (`packages/tui/src/routes/session/index.tsx`)**:
+  - **Left (contextual)**: Only when subagents or TODOs exist in the session, displays a clean inline breadcrumb (`◈ Root · Subagent · Swarm (N)`) and `☑ X/Y` TODO indicator right above the prompt for 1-click switching without adding extra bars.
+  - **Right**: Clean, instant 1-click scroll controls (`↑ Top`, `▲ Up`, `▼ Down`, `↓ Latest`) right above the prompt input.
 - **Direct Subagent Input & Hierarchical Swarm Tree (`routes/session/index.tsx`, `composer/subagents-tab.tsx`, `composer/index.tsx`)**:
   - Kept the `<Prompt>` input box active inside subagent sessions so you can message or steer any subagent directly while viewing its transcript.
   - Upgraded `SubagentsTab` to render the full recursive family tree (`◈ Root` + nested `├─` / `└─` subagents) and made all composer dock tabs (`Subagents`, `Diff Review`, `Terminals`, `[× Close]`) clickable with the mouse.
-- **Category Filter Tabs in Settings (`packages/tui/src/component/dialog-config.tsx`)**:
-  - Added clickable category filter tabs at the top of `Settings`: `All | Appearance | Session | Tabs | Diffs | Input | Alerts | Terminal | Debug` (switchable via mouse click or `Tab` / `Shift+Tab`).
 - **Momentum Scroll Acceleration & Scrollbar (`packages/tui/src/util/scroll.ts`, `component/session-tabs.tsx`)**:
   - Enabled `MacOSScrollAcceleration` (`speed: 5`) and the vertical transcript scrollbar by default.
   - Added mouse-wheel scrolling and clickable `‹` / `›` overflow buttons to `HorizontalSessionTabs`.

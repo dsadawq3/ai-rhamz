@@ -310,8 +310,6 @@ export const settings: Setting[] = [
   },
 ]
 
-const CATEGORIES = ["All", ...Array.from(new Set(settings.map((s) => s.category)))]
-
 export function settingID(setting: Setting) {
   return setting.path.join(".")
 }
@@ -320,13 +318,11 @@ export function DialogConfig(props: { current?: string }) {
   const config = useConfig()
   const toast = useToast()
   const themes = useThemes()
-  const theme = useTheme().surface("dialog")
   const current = Math.max(
     0,
     settings.findIndex((setting) => settingID(setting) === props.current),
   )
   const [selected, setSelected] = createSignal(current)
-  const [activeCategory, setActiveCategory] = createSignal<string>("All")
   const [saving, setSaving] = createSignal(false)
 
   const value = (setting: Setting) => {
@@ -343,29 +339,19 @@ export function DialogConfig(props: { current?: string }) {
       : setting.values
   const display = (setting: Setting) => {
     const current = value(setting)
-    if (setting.format) return `◂ ${setting.format(current)} ▸`
+    if (setting.format) return setting.format(current)
     const index = setting.values?.indexOf(current)
-    const label = index === undefined || index < 0 ? String(current) : (setting.labels?.[index] ?? String(current))
-    return `◂ ${label} ▸`
+    return index === undefined || index < 0 ? String(current) : (setting.labels?.[index] ?? String(current))
   }
-  const options = createMemo(() => {
-    const cat = activeCategory()
-    return settings
-      .map((setting, index) => ({
-        title: setting.title,
-        category: cat === "All" ? setting.category : undefined,
-        searchText: setting.keywords?.join(" "),
-        footer: display(setting),
-        value: index,
-      }))
-      .filter((_, index) => cat === "All" || settings[index]?.category === cat)
-  })
-
-  function cycleCategory(delta: 1 | -1) {
-    const idx = CATEGORIES.indexOf(activeCategory())
-    const next = CATEGORIES[(idx + delta + CATEGORIES.length) % CATEGORIES.length]
-    setActiveCategory(next)
-  }
+  const options = createMemo(() =>
+    settings.map((setting, index) => ({
+      title: setting.title,
+      category: setting.category,
+      searchText: setting.keywords?.join(" "),
+      footer: display(setting),
+      value: index,
+    })),
+  )
 
   async function change(direction: number, index = selected()) {
     if (saving()) return
@@ -393,45 +379,13 @@ export function DialogConfig(props: { current?: string }) {
   return (
     <DialogSelect
       title="Settings"
-      titleView={
-        <box flexDirection="column" gap={1} flexGrow={1}>
-          <text fg={theme.text.base} attributes={TextAttributes.BOLD}>
-            Settings
-          </text>
-          <box flexDirection="row" gap={1} flexWrap="wrap">
-            <For each={CATEGORIES}>
-              {(cat) => {
-                const isCurrent = () => activeCategory() === cat
-                return (
-                  <box
-                    paddingLeft={1}
-                    paddingRight={1}
-                    backgroundColor={isCurrent() ? theme.background.raised.max : theme.background.raised.high}
-                    onMouseUp={() => setActiveCategory(cat)}
-                  >
-                    <text
-                      fg={isCurrent() ? theme.text.base : theme.text.muted}
-                      attributes={isCurrent() ? TextAttributes.BOLD : undefined}
-                      wrapMode="none"
-                    >
-                      {cat}
-                    </text>
-                  </box>
-                )
-              }}
-            </For>
-          </box>
-        </box>
-      }
       options={options()}
       current={current}
+      sectionNavigation={true}
       filterThreshold={0.7}
       onMove={(option) => setSelected(option.value)}
       onSelect={(option) => void change(1, option.value)}
-      footerHints={[
-        { title: "←/→", label: "change" },
-        { title: "tab", label: "category" },
-      ]}
+      footerHints={[{ title: "←/→", label: "change" }]}
       bindings={[
         {
           bind: "left",
@@ -444,18 +398,6 @@ export function DialogConfig(props: { current?: string }) {
           title: "Next value",
           group: "Settings",
           run: () => void change(1),
-        },
-        {
-          bind: "tab",
-          title: "Next category tab",
-          group: "Settings",
-          run: () => cycleCategory(1),
-        },
-        {
-          bind: "shift+tab",
-          title: "Previous category tab",
-          group: "Settings",
-          run: () => cycleCategory(-1),
         },
       ]}
     />

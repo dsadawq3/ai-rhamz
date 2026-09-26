@@ -1426,146 +1426,6 @@ export function Session(props: {
           paddingRight={dimensions().width < 44 ? 1 : 2}
         >
           <Show when={session()}>
-            <box
-              height={1}
-              flexShrink={0}
-              flexDirection="row"
-              justifyContent="space-between"
-              alignItems="center"
-              backgroundColor={theme.background.raised.base}
-              paddingLeft={1}
-              paddingRight={1}
-              marginBottom={1}
-            >
-              <box flexDirection="row" gap={1} flexShrink={1} overflow="hidden">
-                <box
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={theme.background.raised.high}
-                  onMouseUp={() => keymap.dispatch("session.list")}
-                >
-                  <text fg={theme.text.base} wrapMode="none">
-                    ☰ Chats
-                  </text>
-                </box>
-                <box
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={theme.background.raised.high}
-                  onMouseUp={() => keymap.dispatch("session.new")}
-                >
-                  <text fg={theme.text.action.primary.base} wrapMode="none">
-                    + New
-                  </text>
-                </box>
-                <Show when={familyEntries().length > 0}>
-                  <text fg={theme.border.base}>│</text>
-                  <For each={familyEntries().slice(0, 6)}>
-                    {(entry) => (
-                      <box
-                        paddingLeft={1}
-                        paddingRight={1}
-                        backgroundColor={entry.current ? theme.background.raised.max : theme.background.raised.base}
-                        onMouseUp={() => navigate({ type: "session", sessionID: entry.sessionID })}
-                      >
-                        <text
-                          fg={
-                            entry.current
-                              ? theme.text.base
-                              : entry.status === "running"
-                                ? theme.text.feedback.warning.base
-                                : theme.text.muted
-                          }
-                          attributes={entry.current ? TextAttributes.BOLD : undefined}
-                          wrapMode="none"
-                        >
-                          {entry.status === "running" ? "⟳ " : entry.current ? "▸ " : ""}
-                          {entry.label}
-                        </text>
-                      </box>
-                    )}
-                  </For>
-                  <box
-                    paddingLeft={1}
-                    paddingRight={1}
-                    backgroundColor={
-                      composer.open && composer.tab === "subagents"
-                        ? theme.background.raised.max
-                        : theme.background.raised.high
-                    }
-                    onMouseUp={() => {
-                      if (composer.open && composer.tab === "subagents") setComposer("open", false)
-                      else setComposer({ open: true, tab: "subagents" })
-                    }}
-                  >
-                    <text fg={theme.text.feedback.info.base} wrapMode="none">
-                      ⊞ Swarm ({familyEntries().length - 1})
-                    </text>
-                  </box>
-                </Show>
-              </box>
-              <box flexDirection="row" gap={1} flexShrink={0}>
-                <Show when={latestTodos().length > 0}>
-                  <box
-                    paddingLeft={1}
-                    paddingRight={1}
-                    backgroundColor={theme.background.raised.high}
-                    onMouseUp={openTodoDialog}
-                  >
-                    <text
-                      fg={
-                        latestTodos().every((t) => t.status === "completed")
-                          ? theme.text.feedback.success.base
-                          : theme.text.feedback.warning.base
-                      }
-                      wrapMode="none"
-                    >
-                      ☑ Todo {latestTodos().filter((t) => t.status === "completed").length}/{latestTodos().length}
-                    </text>
-                  </box>
-                </Show>
-                <box
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={theme.background.raised.high}
-                  onMouseUp={() => scrollToFirstMessage()}
-                >
-                  <text fg={theme.text.muted} wrapMode="none">
-                    ⇈ Top
-                  </text>
-                </box>
-                <box
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={theme.background.raised.high}
-                  onMouseUp={() => jumpByMessageOffset(-1)}
-                >
-                  <text fg={theme.text.base} wrapMode="none">
-                    ▲ Prev
-                  </text>
-                </box>
-                <box
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={theme.background.raised.high}
-                  onMouseUp={() => jumpByMessageOffset(1)}
-                >
-                  <text fg={theme.text.base} wrapMode="none">
-                    ▼ Next
-                  </text>
-                </box>
-                <box
-                  paddingLeft={1}
-                  paddingRight={1}
-                  backgroundColor={awayFromBottom() ? theme.background.raised.max : theme.background.raised.high}
-                  onMouseUp={toBottom}
-                >
-                  <text fg={awayFromBottom() ? theme.text.feedback.info.base : theme.text.muted} wrapMode="none">
-                    ⇊ Latest
-                  </text>
-                </box>
-              </box>
-            </box>
             <box flexGrow={1} minHeight={0} position="relative">
               <scrollbox
                 ref={(r) => {
@@ -1616,25 +1476,137 @@ export function Session(props: {
                 </Show>
               </scrollbox>
             </box>
-            <box height={1} flexShrink={0} flexDirection="row" justifyContent="flex-end">
-              <Show when={firstJump()}>
-                <text fg={theme.text.feedback.info.base}>Loading session history…</text>
-              </Show>
-              <Show when={!firstJump() && awayFromBottom()}>
-                <box
-                  id="session-jump-to-latest"
-                  paddingLeft={1}
-                  onMouseOver={() => setLatestHovered(true)}
-                  onMouseOut={() => setLatestHovered(false)}
-                  onMouseUp={toBottom}
-                >
-                  <text
-                    fg={latestHovered() ? theme.text.action.secondary.hovered : theme.text.action.secondary.base}
+            <box height={1} flexShrink={0} flexDirection="row" justifyContent="space-between" alignItems="center">
+              <box flexDirection="row" gap={2} flexShrink={1} overflow="hidden">
+                <Show when={familyEntries().length > 0}>
+                  <box flexDirection="row" gap={1} flexShrink={1} overflow="hidden">
+                    <For each={familyEntries().slice(0, 5)}>
+                      {(entry, idx) => (
+                        <>
+                          <Show when={idx() > 0}>
+                            <text fg={theme.border.base}>·</text>
+                          </Show>
+                          <box
+                            onMouseUp={(e) => {
+                              e.stopPropagation()
+                              navigate({ type: "session", sessionID: entry.sessionID })
+                            }}
+                          >
+                            <text
+                              fg={
+                                entry.current
+                                  ? theme.text.action.primary.base
+                                  : entry.status === "running"
+                                    ? theme.text.feedback.warning.base
+                                    : theme.text.muted
+                              }
+                              attributes={entry.current ? TextAttributes.BOLD : undefined}
+                              wrapMode="none"
+                            >
+                              {entry.status === "running" ? "⟳ " : ""}
+                              {entry.label}
+                            </text>
+                          </box>
+                        </>
+                      )}
+                    </For>
+                    <text fg={theme.border.base}>·</text>
+                    <box
+                      onMouseUp={(e) => {
+                        e.stopPropagation()
+                        if (composer.open && composer.tab === "subagents") setComposer("open", false)
+                        else setComposer({ open: true, tab: "subagents" })
+                      }}
+                    >
+                      <text fg={theme.text.muted} wrapMode="none">
+                        Swarm ({familyEntries().length - 1})
+                      </text>
+                    </box>
+                  </box>
+                </Show>
+                <Show when={latestTodos().length > 0}>
+                  <box
+                    onMouseUp={(e) => {
+                      e.stopPropagation()
+                      openTodoDialog()
+                    }}
                   >
-                    Jump to latest ↓
-                  </text>
-                </box>
-              </Show>
+                    <text
+                      fg={
+                        latestTodos().every((t) => t.status === "completed")
+                          ? theme.text.feedback.success.base
+                          : theme.text.muted
+                      }
+                      wrapMode="none"
+                    >
+                      ☑ {latestTodos().filter((t) => t.status === "completed").length}/{latestTodos().length}
+                    </text>
+                  </box>
+                </Show>
+              </box>
+              <box flexDirection="row" gap={2} flexShrink={0}>
+                <Show when={firstJump()}>
+                  <text fg={theme.text.feedback.info.base}>Loading…</text>
+                </Show>
+                <Show when={messages().length > 0}>
+                  <box
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      clearMessageNavigation()
+                      ensureAllRows(() => {
+                        if (!scroll || scroll.isDestroyed) return
+                        scroll.stickyScroll = false
+                        scroll.scrollTo(0)
+                        updateAwayFromBottom()
+                      })
+                    }}
+                  >
+                    <text fg={theme.text.muted} wrapMode="none">
+                      ↑ Top
+                    </text>
+                  </box>
+                  <box
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      if (!scroll || scroll.isDestroyed) return
+                      moveTranscript(-Math.max(6, Math.floor(scroll.height * 0.6)))
+                    }}
+                  >
+                    <text fg={theme.text.muted} wrapMode="none">
+                      ▲ Up
+                    </text>
+                  </box>
+                  <box
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      if (!scroll || scroll.isDestroyed) return
+                      moveTranscript(Math.max(6, Math.floor(scroll.height * 0.6)))
+                    }}
+                  >
+                    <text fg={theme.text.muted} wrapMode="none">
+                      ▼ Down
+                    </text>
+                  </box>
+                </Show>
+                <Show when={!firstJump() && awayFromBottom()}>
+                  <box
+                    id="session-jump-to-latest"
+                    onMouseOver={() => setLatestHovered(true)}
+                    onMouseOut={() => setLatestHovered(false)}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      toBottom()
+                    }}
+                  >
+                    <text
+                      fg={latestHovered() ? theme.text.action.secondary.hovered : theme.text.action.primary.base}
+                      wrapMode="none"
+                    >
+                      ↓ Latest
+                    </text>
+                  </box>
+                </Show>
+              </box>
             </box>
             <box flexShrink={0}>
               <Show when={!composer.open && !disabled() && queuedPrompts().length > 0}>
