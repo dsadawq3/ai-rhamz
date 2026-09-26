@@ -11,7 +11,7 @@ if (!expectedBunVersion) {
 }
 
 // relax version requirement
-const expectedBunVersionRange = `^${expectedBunVersion}`
+const expectedBunVersionRange = `>=1.3.0`
 
 if (!semver.satisfies(process.versions.bun, expectedBunVersionRange)) {
   throw new Error(`This script requires bun@${expectedBunVersionRange}, but you are using bun@${process.versions.bun}`)
