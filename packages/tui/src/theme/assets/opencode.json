@@ -1,18 +1,18 @@
 {
   "$schema": "https://opencode.ai/theme.json",
   "defs": {
-    "darkStep1": "#10121a",
-    "darkStep2": "#161923",
-    "darkStep3": "#1e2230",
-    "darkStep4": "#232838",
-    "darkStep5": "#282e42",
-    "darkStep6": "#343b54",
-    "darkStep7": "#545c78",
-    "darkStep8": "#828bb0",
+    "darkStep1": "#06070b",
+    "darkStep2": "#0b0d14",
+    "darkStep3": "#11141e",
+    "darkStep4": "#151925",
+    "darkStep5": "#191d2b",
+    "darkStep6": "#242a3d",
+    "darkStep7": "#48506a",
+    "darkStep8": "#767f9e",
     "darkStep9": "#7aa2f7",
     "darkStep10": "#e06c88",
-    "darkStep11": "#828bb0",
-    "darkStep12": "#e4e8f4",
+    "darkStep11": "#767f9e",
+    "darkStep12": "#e2e6f2",
     "darkSecondary": "#66bfd4",
     "darkAccent": "#a685e0",
     "darkRed": "#e06c88",
@@ -110,7 +110,7 @@
       "light": "#c53b53"
     },
     "diffContext": {
-      "dark": "#737aa2",
+      "dark": "#687094",
       "light": "#7086b5"
     },
     "diffHunkHeader": {
@@ -126,11 +126,11 @@
       "light": "#f52a65"
     },
     "diffAddedBg": {
-      "dark": "#142422",
+      "dark": "#0c1816",
       "light": "#d5e5d5"
     },
     "diffRemovedBg": {
-      "dark": "#281720",
+      "dark": "#1c0d14",
       "light": "#f7d8db"
     },
     "diffContextBg": {
@@ -138,15 +138,15 @@
       "light": "lightStep2"
     },
     "diffLineNumber": {
-      "dark": "#565f89",
+      "dark": "#4a5270",
       "light": "#595959"
     },
     "diffAddedLineNumberBg": {
-      "dark": "#101d1b",
+      "dark": "#091210",
       "light": "#c5d5c5"
     },
     "diffRemovedLineNumberBg": {
-      "dark": "#201219",
+      "dark": "#14090e",
       "light": "#e7c8cb"
     },
     "markdownText": {
