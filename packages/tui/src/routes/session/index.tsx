@@ -1029,6 +1029,19 @@ export function Session(props: {
       },
     },
     {
+      title: "Context & Compaction Editor",
+      id: "session.context",
+      group: "Session",
+      slash: {
+        name: "context",
+      },
+      run: () => {
+        if (composer.open && composer.tab === "context") setComposer("open", false)
+        else setComposer({ open: true, tab: "context" })
+        dialog.clear()
+      },
+    },
+    {
       title: "Unshare session",
       id: "session.unshare",
       group: "Session",
@@ -1543,6 +1556,20 @@ export function Session(props: {
                     </text>
                   </box>
                 </Show>
+                <box
+                  onMouseUp={(e) => {
+                    e.stopPropagation()
+                    if (composer.open && composer.tab === "context") setComposer("open", false)
+                    else setComposer({ open: true, tab: "context" })
+                  }}
+                >
+                  <text
+                    fg={composer.open && composer.tab === "context" ? theme.text.action.primary.base : theme.text.muted}
+                    wrapMode="none"
+                  >
+                    ◈ Context
+                  </text>
+                </box>
               </box>
               <box flexDirection="row" gap={2} flexShrink={0}>
                 <Show when={firstJump()}>

@@ -8,8 +8,11 @@ import { FSUtil } from "@opencode/util/fs-util"
 import { Location } from "../../location.js"
 import { FileAccess } from "../../file-access.js"
 import { SessionInstructions } from "../../session/instructions.js"
+import { WorkingState } from "../../session/working-state.js"
 import { AbsolutePath } from "../../schema.js"
+import { AgentBus } from "../agent-bus.js"
 import { ReadToolFileSystem } from "../read-filesystem.js"
+import { RepoMapIndex } from "../repo-map-index.js"
 import { Environment } from "../../environment/index.js"
 
 export const name = "read"
@@ -110,11 +113,16 @@ export const Plugin = {
                 !ReadToolFileSystem.MEDIA_MIMES.has(result.content.mime)
               )
                 return yield* Effect.fail(new ReadToolFileSystem.BinaryFileError({ resource: result.target.resource }))
-              return { output: result.content, path: result.path }
+              return { output: result.content, path: result.path, absolute: result.target.absolute }
             }).pipe(
               Effect.map((result) => ({
                 output: result.output,
-                content: toModelContent(result.path, input.offset, result.output),
+                content: toModelContent(result.path, input.offset, result.output, {
+                  sessionID: context.sessionID,
+                  absolutePath: result.absolute,
+                  limit: input.limit,
+                  workspaceDir: location.directory,
+                }),
                 metadata: { truncated: result.output.type === "file" ? false : result.output.truncated },
               })),
               Effect.mapError((error) => {
@@ -171,7 +179,19 @@ export const Plugin = {
   }),
 }
 
-export const toModelContent = (path: string, offset: number | undefined, output: typeof Output.Type) => {
+export interface ModelContentOptions {
+  readonly sessionID?: string
+  readonly absolutePath?: string
+  readonly limit?: number
+  readonly workspaceDir?: string
+}
+
+export const toModelContent = (
+  path: string,
+  offset: number | undefined,
+  output: typeof Output.Type,
+  options?: ModelContentOptions,
+) => {
   if (output.type === "file" && output.encoding === "base64")
     return [
       { type: "text", text: output.mime === "application/pdf" ? "PDF read successfully" : "Image read successfully" },
@@ -200,11 +220,37 @@ export const toModelContent = (path: string, offset: number | undefined, output:
   // Pages already join selected lines; a trailing newline represents a selected blank line.
   const text = output.type === "file" ? output.content.replace(/\n$/, "") : output.content
   const lines = output.content === "" ? [] : text.split("\n")
+  const end = lines.length === 0 ? start : start + lines.length - 1
+
+  if (options?.sessionID && options.absolutePath && lines.length > 0) {
+    const cas = AgentBus.checkAndRecordSessionRead({
+      sessionID: options.sessionID,
+      absolutePath: options.absolutePath,
+      offset,
+      limit: options.limit,
+      content: text,
+      lineCount: lines.length,
+    })
+    WorkingState.recordFileRead(options.sessionID, options.absolutePath, {
+      hash: cas.hash,
+      range: `L${start}-${end}`,
+      workspaceDir: options.workspaceDir,
+    })
+    if (cas.deduplicated) {
+      return `unchanged:${cas.hash} (${lines.length} lines, L${start}-${end}) — content of ${path} is already in your context and has not changed on disk.`
+    }
+  }
+
   const content = [
-    lines.length === 0 ? `Read file ${path}, 0 lines` : `Read file ${path}, lines ${start}-${start + lines.length - 1}`,
+    lines.length === 0 ? `Read file ${path}, 0 lines` : `Read file ${path}, lines ${start}-${end}`,
   ]
   lines.forEach((line, index) => content.push(`${start + index}: ${line}`))
-  if (output.type === "text-page" && output.truncated && output.next !== undefined)
+  if (output.type === "text-page" && output.truncated && output.next !== undefined) {
+    if (options?.absolutePath) {
+      const outline = RepoMapIndex.buildSymbolOutlineFooter(text, start, end, options.absolutePath)
+      if (outline) content.push(outline)
+    }
     content.push(`[Output truncated. Continue reading with offset: ${output.next}]`)
+  }
   return content.join("\n")
 }

@@ -7,6 +7,7 @@ import { Keymap } from "../../../context/keymap"
 import { SubagentsTab } from "./subagents-tab"
 import { ShellTab } from "./shell-tab"
 import { TerminalsTab } from "./terminals-tab"
+import { ContextTab } from "./context-tab"
 import { useConfig } from "../../../config"
 import { ComposerContext, type ComposerTab } from "./context"
 
@@ -131,6 +132,7 @@ export function Composer(props: ComposerProps) {
                 <text fg={theme.text.muted}>✕ esc</text>
               </box>
             </box>
+            <ContextTab sessionID={props.sessionID} />
             <SubagentsTab sessionID={props.sessionID} />
             <ShellTab sessionID={props.sessionID} />
             <Show when={config.session.terminal}>

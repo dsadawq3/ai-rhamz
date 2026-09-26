@@ -13,6 +13,9 @@ import { Location } from "../../location.js"
 import { FileAccess } from "../../file-access.js"
 import { Patch } from "@opencode/util/patch"
 import { Permission } from "../../permission.js"
+import { WorkingState } from "../../session/working-state.js"
+import { AgentBus } from "../agent-bus.js"
+import { RepoMapIndex } from "../repo-map-index.js"
 import DESCRIPTION from "../patch.txt"
 import { fileDiff } from "./file-diff.js"
 
@@ -276,6 +279,20 @@ export const Plugin = {
                 const target = change.type === "update" && change.moveTarget ? change.moveTarget : change.target
                 return patchFile(change, formatted.get(target.absolute))
               })
+              for (const item of applied) {
+                AgentBus.invalidateFile(item.target, { sessionID: context.sessionID, agent: context.agent })
+                RepoMapIndex.invalidateSymbolCache(item.target)
+                const text = formatted.get(item.target)
+                WorkingState.recordFileMutation(
+                  context.sessionID,
+                  item.target,
+                  item.type === "add" ? "write" : item.type === "delete" ? "delete" : "edit",
+                  {
+                    hash: text ? AgentBus.hashContent(text) : undefined,
+                    workspaceDir: location.directory,
+                  },
+                )
+              }
               return { applied, files }
             }).pipe(
               fileMutation.withLock(lockTargets),

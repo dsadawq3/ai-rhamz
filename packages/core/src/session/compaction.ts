@@ -36,6 +36,8 @@ import { State } from "../state.js"
 import { toLLMMessages } from "./runner/to-llm-message.js"
 import type { AgentNotFoundError } from "./error.js"
 import type { Instructions } from "../instructions/index.js"
+import { WorkingState } from "./working-state.js"
+import { AgentBus } from "../tool/agent-bus.js"
 
 const DEFAULT_BUFFER = 20_000
 const DEFAULT_KEEP_TOKENS = 15_000
@@ -74,11 +76,15 @@ List the files and directories, other than the current working directory, that a
 
 ## Important Context
 - [facts the next agent cannot continue without and cannot easily find on its own; or "(none)"]
+
+## Technical & Offensive / Swarm State
+- [Omit for simple coding tasks. REQUIRED when the session involves Bug Bounty hunting, security auditing, reverse engineering, exploit/PoC development, or multi-agent subagent swarms: write a comprehensive custom technical breakdown preserving ALL discovered targets, endpoints, parameters, auth/session tokens, verified vs. falsified hypotheses, vulnerability chains, memory offsets/structs, PoC payloads, and active/completed subagent sessionIDs with their findings.]
 </template>`
 
 const SUMMARY_RULES = `Rules:
-- Keep each section concise. Use terse, single-line bullets, not prose paragraphs or nested lists.
-- Prefer short references over detailed restatement. It is fine to leave out information the next agent can recover from the code or the files listed above.
+- Keep standard sections concise. Use terse, single-line bullets for routine tasks.
+- ADAPTIVE DEPTH FOR COMPLEX / BUG BOUNTY / SWARM TASKS: If the task goes beyond routine edits (e.g., Bug Bounty hunting, vulnerability chaining, reverse engineering, binary patching, or multi-agent subagent swarms), DO NOT over-compress critical technical telemetry. Write a full, custom technical breakdown inside "## Technical & Offensive / Swarm State" and "## Important Context" preserving every target, endpoint, payload, offset, disputed premise, and subagent sessionID. An automatic V2 WorkingState digest (modified files, subagent ledger, command history, and editable .opencode/context/ checkpoint file) will be appended automatically alongside your summary to assist you without interfering.
+- Prefer short references over detailed restatement for code that is already saved on disk.
 - Preserve exact file paths, symbols, commands, error strings, URLs, and identifiers.
 - Carry forward only user questions or requests that remain unanswered or require further action. Do not repeat ones that newer history has answered or resolved. Preserve exact wording when carrying one forward.
 - Preserve consequential workflow state, including whether changes are uncommitted, committed, pushed, under review, or merged.
@@ -722,15 +728,23 @@ export const layer = Layer.effect(
           ...usage,
         })
       }
-      yield* bus.publish(SessionEvent.Compaction.Ended, {
-        sessionID: context.session.id,
-        reason: input.reason,
-        model: context.model.ref,
-        providerState,
-        text: summary,
-        recent: history.recent,
-        ...usage,
-      })
+      AgentBus.clearSessionReads(context.session.id)
+      const persisted = WorkingState.persistCompactionFile(context.session.id, summary)
+      yield* bus.publish(
+        SessionEvent.Compaction.Ended,
+        {
+          sessionID: context.session.id,
+          reason: input.reason,
+          model: context.model.ref,
+          providerState,
+          text: persisted.fullSummary,
+          recent: history.recent,
+          ...usage,
+        },
+        persisted.filePath
+          ? { metadata: { sessionID: context.session.id, compactionFile: persisted.filePath } }
+          : undefined,
+      )
       return { status: "completed" as const }
     })
     const compact = Effect.fn("SessionCompaction.compact")(function* (input: AutoInput): Effect.fn.Return<Outcome> {

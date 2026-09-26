@@ -15,6 +15,9 @@ import { FileMutation } from "../../file-mutation.js"
 import { Formatter } from "../../formatter.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
+import { WorkingState } from "../../session/working-state.js"
+import { AgentBus } from "../agent-bus.js"
+import { RepoMapIndex } from "../repo-map-index.js"
 import { fileDiff } from "./file-diff.js"
 
 export const name = "write"
@@ -89,6 +92,11 @@ export const Plugin = {
               if (yield* formatter.file(target.absolute)) {
                 yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
               }
+              AgentBus.invalidateFile(target.absolute, { sessionID: context.sessionID, agent: context.agent })
+              RepoMapIndex.invalidateSymbolCache(target.absolute)
+              WorkingState.recordFileMutation(context.sessionID, target.resource, "write", {
+                hash: AgentBus.hashContent(input.content),
+              })
               return result
             }).pipe(
               Effect.map((output) => ({ output, content: toModelContent(output) })),

@@ -13,6 +13,7 @@ import { Session } from "../../session.js"
 import { SessionSchema } from "../../session/schema.js"
 import { SubagentCompletion } from "../../session/subagent-completion.js"
 import { SubagentJob } from "../../session/subagent-job.js"
+import { WorkingState } from "../../session/working-state.js"
 
 export const name = "subagent"
 
@@ -188,7 +189,7 @@ export const Plugin = {
                   ),
                 )
               const ancestry: { id: SessionSchema.ID; agent: string; title: string }[] = [
-                { id: parent.id, agent: parent.agent, title: parent.title },
+                { id: parent.id, agent: parent.agent ?? "root", title: parent.title ?? "" },
               ]
               let current = parent
               let depth = 0
@@ -201,7 +202,7 @@ export const Plugin = {
                       (error) => new ToolFailure({ message: `Parent session not found: ${current.parentID}`, error }),
                     ),
                   )
-                ancestry.unshift({ id: current.id, agent: current.agent, title: current.title })
+                ancestry.unshift({ id: current.id, agent: current.agent ?? "root", title: current.title ?? "" })
               }
               const limit = Config.latest(yield* config.entries(), "experimental")?.subagent_depth ?? 5
               if (depth >= limit)
@@ -277,6 +278,8 @@ export const Plugin = {
                       (error) => new ToolFailure({ message: `Parent session not found: ${context.sessionID}`, error }),
                     ),
                   ))
+
+              WorkingState.linkChildSession(context.sessionID, child.id, agent.id, taskDescription)
 
               const isLiveSteer = mode === "send_message" || mode === "steer"
               const background = isLiveSteer || input.background === true
@@ -365,6 +368,12 @@ export const Plugin = {
               }
             }).pipe(
               Effect.map((output) => {
+                WorkingState.updateSubagentStatus(
+                  context.sessionID,
+                  output.sessionID,
+                  output.status,
+                  output.status === "completed" ? output.output : undefined,
+                )
                 const disputed = output.status === "completed" && /\[DISPUTED PREMISE\]/i.test(output.output)
                 const disputedBanner = disputed
                   ? "\n[EPISTEMIC ALERT: The child subagent disputed one or more of your premises based on empirical evidence. Do NOT ignore or override its correction — update your mental model before proceeding.]"

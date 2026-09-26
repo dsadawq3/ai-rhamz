@@ -98,6 +98,25 @@ In stock OpenCode, subagents blindly treat prompts from a parent agent as infall
 - **Anti-Slop Designer Skill (`.opencode/skills/designer/SKILL.md`)**:
   High-craft UI/UX design system (Atmospheric Minimalism, Swiss Grids, Kinetic Typography, Intentional Dark Mode) with strict anti-slop enforcement.
 
+### 9. Context & Token Optimization Engine (`ShellCompress`, `AgentBus`, `WorkingState` & TUI `Context` Tab)
+- **Intelligent Shell Output Compression (`packages/core/src/shell/compress.ts`, `tool/plugin/shell.ts`, `session/runner/to-llm-message.ts`)**:
+  - Automatically compresses noisy terminal output before sending it to the LLM (saving up to 70–80% of wasted context tokens) while keeping raw output intact in the TUI:
+    - Collapses deep stack traces (keeps the first 5 frames + `... N more stack frames`).
+    - Collapses hundreds of passing test lines (`PASS / ✓ / ok` → keeps first 3 + `... N passing tests omitted`) while preserving **100% of `FAIL` / `ERROR` output** untouched.
+    - Strips ASCII spinners and download progress bars (`[████░░░░] 52%`), and collapses consecutive duplicate log lines (`... N more similar lines`).
+- **CAS File Read Deduplication & Single-File Symbol Outline (`packages/core/src/tool/agent-bus.ts`, `tool/repo-map-index.ts`, `tool/plugin/read.ts`)**:
+  - Computes a deterministic 8-hex content hash (`hash:<8hex>`) on every file slice read. If the same session re-reads the exact same file range and the file has not changed on disk, returns `unchanged:<hash> (... — content already in your context)` instead of re-sending hundreds of duplicate lines.
+  - When reading a large file that gets truncated/paged, automatically appends a `Symbols below line X:` outline (`fn`, `class`, `interface`, `type` with `:start-end` line spans) for that single file only (**zero automatic background repository indexing**—the model explores on its own).
+- **Shared Subagent Bus & Cross-Agent Contention Detection (`packages/core/src/tool/agent-bus.ts`, `edit.ts`, `write.ts`, `patch.ts`, `grep.ts`, `glob.ts`)**:
+  - Shares read-only `grep` and `glob` results across parallel subagents in the same workspace epoch so concurrent subagents don't run duplicate ripgrep scans, invalidating automatically the instant any file is modified.
+  - Detects cross-subagent file edits so if a parallel subagent modifies a file, other subagents are notified to re-read the updated lines instead of failing blindly.
+- **Hybrid V2 Compaction + Editable Checkpoint Files + TUI `Context & Compact` Tab (`packages/core/src/session/working-state.ts`, `session/compaction.ts`, `tui/src/routes/session/composer/context-tab.tsx`)**:
+  - **Adaptive Complex / Bug Bounty / Swarm Compaction**: Instructs the LLM to write a full custom technical breakdown (`## Technical & Offensive / Swarm State`) when compacting Bug Bounty, reverse engineering, exploit chaining, or multi-agent swarm sessions—preserving all targets, endpoints, payloads, offsets, disputed premises, and subagent `sessionID`s.
+  - **Instant V2 WorkingState Digest**: Automatically tracks modified/inspected files, subagent swarm `sessionID`s/findings, and recent shell commands/failures in the background with zero LLM overhead and appends `## Auto-Tracked Working State (V2 Digest)` alongside the LLM summary.
+  - **Live-Editable Compaction Checkpoints (`.opencode/context/`) & TUI `◈ Context` Tab (`/context`)**:
+    - Every compaction saves an editable Markdown checkpoint to `.opencode/context/compaction-<sessionID>.md` alongside persistent operator notes in `.opencode/context/context.md`.
+    - Any edits saved to `.opencode/context/compaction-<sessionID>.md` or `.opencode/context/context.md` (via the TUI **`◈ Context`** tab / `/context` command or any editor) are live-loaded into `<conversation-checkpoint>` on the very next turn.
+
 ---
 
 ## Quick Start (Run from Source)
@@ -146,6 +165,9 @@ bun run packages/cli/script/build.ts --single --skip-install --skip-web-ui
 | **Core Identity & System Prompts** | `packages/core/src/plugin/identity.ts`, `packages/core/src/session/system-prompt.ts`, `packages/core/src/session/runner/prompt/system.txt`, `packages/core/src/plugin/system-prompt/*.txt` |
 | **Direct Rule Injection & Deduplication** | `packages/core/src/instruction-discovery.ts`, `packages/core/src/session/instructions.ts`, `packages/core/src/config/plugin/instruction.ts` |
 | **Epistemic Hierarchy & 5D Subagent Swarm** | `packages/core/src/tool/plugin/subagent.ts`, `packages/core/src/session/subagent-completion.ts`, `packages/core/src/plugin/agent.ts`, `packages/schema/src/agent.ts` |
+| **Shell Output Compression (`ShellCompress`)** | `packages/core/src/shell/compress.ts`, `packages/core/src/tool/plugin/shell.ts`, `packages/core/src/session/runner/to-llm-message.ts` |
+| **CAS Read Dedup, Symbol Outline & `AgentBus`** | `packages/core/src/tool/agent-bus.ts`, `packages/core/src/tool/repo-map-index.ts`, `packages/core/src/tool/read-filesystem.ts`, `packages/core/src/tool/plugin/read.ts`, `edit.ts`, `write.ts`, `patch.ts`, `grep.ts`, `glob.ts` |
+| **Hybrid V2 Compaction & TUI `Context` Tab** | `packages/core/src/session/working-state.ts`, `packages/core/src/session/compaction.ts`, `packages/tui/src/routes/session/composer/context-tab.tsx` |
 | **Loop Breaker (Anti-Stuck Engine)** | `packages/core/src/tool.ts` |
 | **First-Class TODO Tools (`todowrite` / `todoread`)** | `packages/core/src/tool/plugin/opencode.ts`, `packages/tui/src/util/tool-display.ts` |
 | **5-Provider Keyless WebSearch** | `packages/core/src/websearch.ts`, `packages/core/src/tool/plugin/websearch.ts` |
@@ -154,3 +176,4 @@ bun run packages/cli/script/build.ts --single --skip-install --skip-web-ui
 | **Momentum Scroll & Session Tabs** | `packages/tui/src/util/scroll.ts`, `packages/tui/src/component/session-tabs.tsx`, `packages/tui/src/config/index.tsx` |
 | **Deep Obsidian Theme & 24-Bit Logo** | `packages/tui/src/theme/assets/v2/opencode.json`, `packages/tui/src/theme/assets/opencode.json`, `.opencode/themes/rhamz.json`, `packages/tui/src/logo.ts`, `packages/tui/src/component/logo.tsx` |
 | **Built-In Agents & Skills** | `.opencode/agent/rhamz.md`, `.opencode/agent/bugbounty-*.md`, `.opencode/skills/rhamz/SKILL.md`, `.opencode/skills/bugbounty/SKILL.md`, `.opencode/skills/designer/SKILL.md` |
+

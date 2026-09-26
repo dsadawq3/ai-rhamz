@@ -11,6 +11,7 @@ import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
 import { Ripgrep } from "../../ripgrep.js"
 import { RelativePath } from "../../schema.js"
+import { AgentBus } from "../agent-bus.js"
 
 export const name = "grep"
 
@@ -108,6 +109,12 @@ export const Plugin = {
               )
               const cwd = type === "directory" ? root : path.dirname(root)
               const limit = input.limit ?? FileSystem.DEFAULT_SEARCH_LIMIT
+              const cacheKey = `grep::${AgentBus.normalizePath(root)}::${input.pattern}::${input.include ?? ""}::${input.literal ?? false}::${input.caseSensitive ?? true}::${limit}`
+              const cached = AgentBus.getCachedToolResult<{
+                matches: ReadonlyArray<typeof FileSystem.Match.Type>
+                truncated: boolean
+              }>(cacheKey)
+              if (cached) return cached
               const matches = yield* ripgrep
                 .grep({
                   cwd,
@@ -142,7 +149,9 @@ export const Plugin = {
                     ),
                   ),
                 )
-              return { matches: matches.slice(0, limit), truncated: matches.length > limit }
+              const result = { matches: matches.slice(0, limit), truncated: matches.length > limit }
+              AgentBus.setCachedToolResult(cacheKey, result)
+              return result
             }).pipe(
               Effect.map((result) => ({
                 output: result.matches,

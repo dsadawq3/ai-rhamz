@@ -11,6 +11,7 @@ import { FileAccess } from "../../file-access.js"
 import { Ripgrep } from "../../ripgrep.js"
 import { RelativePath } from "../../schema.js"
 import { Permission } from "../../permission.js"
+import { AgentBus } from "../agent-bus.js"
 
 export const name = "glob"
 
@@ -90,6 +91,12 @@ export const Plugin = {
                 )
               const root = target.absolute
               const limit = input.limit ?? FileSystem.DEFAULT_SEARCH_LIMIT
+              const cacheKey = `glob::${AgentBus.normalizePath(root)}::${input.pattern}::${input.hidden ?? false}::${limit}`
+              const cached = AgentBus.getCachedToolResult<{
+                entries: ReadonlyArray<typeof FileSystem.Entry.Type>
+                truncated: boolean
+              }>(cacheKey)
+              if (cached) return cached
               const entries = yield* ripgrep
                 .glob({
                   cwd: root,
@@ -116,7 +123,9 @@ export const Plugin = {
                     ),
                   ),
                 )
-              return { entries: entries.slice(0, limit), truncated: entries.length > limit }
+              const result = { entries: entries.slice(0, limit), truncated: entries.length > limit }
+              AgentBus.setCachedToolResult(cacheKey, result)
+              return result
             }).pipe(
               Effect.map((result) => ({
                 output: result.entries,

@@ -15,9 +15,11 @@ import { NonNegativeInt } from "../../schema.js"
 import { Session } from "../../session.js"
 import { SessionSchema } from "../../session/schema.js"
 import { Shell } from "../../shell.js"
+import { ShellCompress } from "../../shell/compress.js"
 import { ShellParse } from "../../shell/parse.js"
 import { ShellSelect } from "../../shell/select.js"
 import { ShellResult } from "../../shell/result.js"
+import { WorkingState } from "../../session/working-state.js"
 
 export const name = "shell"
 export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
@@ -76,7 +78,8 @@ type Output = typeof Output.Type
 
 const resultMessages = (output: Output) => {
   const notice = output.status === "running" ? BACKGROUND_INSTRUCTION : ShellResult.notice(output)
-  return [...(output.output ? [output.output] : []), ...(notice ? [notice] : [])]
+  const compressed = output.output ? ShellCompress.compress(output.output) : ""
+  return [...(compressed ? [compressed] : []), ...(notice ? [notice] : [])]
 }
 
 const toolResult = (output: Output) => {
@@ -216,6 +219,7 @@ export const Plugin = {
                 const result = yield* shell.result(info)
                 if (!result.capture) return yield* new Shell.NotFoundError({ id: info.id })
                 const output = ShellResult.output(result)
+                WorkingState.recordCommand(context.sessionID, info.command, output.exit, output.output)
                 return {
                   ...output,
                   output: output.timeout

@@ -17,6 +17,9 @@ import { Formatter } from "../../formatter.js"
 import { Location } from "../../location.js"
 import { FileAccess } from "../../file-access.js"
 import { Permission } from "../../permission.js"
+import { WorkingState } from "../../session/working-state.js"
+import { AgentBus } from "../agent-bus.js"
+import { RepoMapIndex } from "../repo-map-index.js"
 import { fileDiff } from "./file-diff.js"
 
 export const name = "edit"
@@ -187,8 +190,12 @@ export const Plugin = {
                 source: permissionSource,
               })
               if (replacements === 0) {
+                const other = AgentBus.getRecentOtherModifier(target.absolute, context.sessionID)
+                const contentionNote = other
+                  ? ` Note: Another parallel agent (${other.agent}, session ${other.sessionID}) modified this file recently — re-read ${input.path} to get the updated lines.`
+                  : ""
                 return yield* new ToolFailure({
-                  message: `Could not find oldString in ${input.path}. It must match exactly, including whitespace and indentation.`,
+                  message: `Could not find oldString in ${input.path}. It must match exactly, including whitespace and indentation.${contentionNote}`,
                 })
               }
               if (replacements > 1 && input.replaceAll !== true) {
@@ -205,6 +212,12 @@ export const Plugin = {
               const formatted = (yield* formatter.file(target.absolute))
                 ? yield* FileMutation.syncTextBom(environment.files, target.absolute, bom)
                 : (yield* FileMutation.readText(environment.files, target.absolute)).text
+              AgentBus.invalidateFile(target.absolute, { sessionID: context.sessionID, agent: context.agent })
+              RepoMapIndex.invalidateSymbolCache(target.absolute)
+              WorkingState.recordFileMutation(context.sessionID, target.absolute, "edit", {
+                hash: AgentBus.hashContent(formatted),
+                workspaceDir: location.directory,
+              })
               return {
                 files: [fileDiff(result.resource, source, formatted)],
                 replacements,

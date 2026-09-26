@@ -10,6 +10,7 @@ import type { Files } from "../environment/index.js"
 import { FileSystem } from "../filesystem.js"
 import { Mime } from "../mime.js"
 import { AbsolutePath, NonNegativeInt, PositiveInt, RelativePath } from "../schema.js"
+import { RepoMapIndex } from "./repo-map-index.js"
 
 export const MAX_READ_LINES = 2_000
 export const MAX_READ_BYTES = 50 * 1024
@@ -158,6 +159,14 @@ export const read = Effect.fn("ReadTool.read")(function* (
       content: new TextDecoder().decode(first.bytes).split("\n").map(clampLine).join("\n"),
       encoding: "utf8" as const,
       mime: mimeType(input),
+    }
+  }
+
+  if (!first.bytes.includes(0)) {
+    try {
+      RepoMapIndex.cacheSingleFileOutline(input, new TextDecoder().decode(first.bytes))
+    } catch {
+      // Best-effort single-file outline
     }
   }
 
