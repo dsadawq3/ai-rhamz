@@ -69,6 +69,8 @@ import { directoryRecentValue } from "../../prompt/directory-completion"
 import { useWorkingDirectoryActions } from "../../ui/working-directory-actions"
 import { truncateFilePath } from "../../ui/file-path"
 import { PromptMetadataRow } from "./metadata"
+import { TabPulse } from "../tab-pulse"
+import "./kinetic-textarea"
 
 export type PromptProps = {
   sessionID?: string
@@ -1174,6 +1176,7 @@ export function Prompt(props: PromptProps) {
     const currentMode = store.mode
     const entry = { ...store.prompt, mode: currentMode }
     if (trimmed) {
+      triggerSubmitPulse()
       resetComposer()
       props.onSubmit?.()
     }
@@ -1573,7 +1576,40 @@ export function Prompt(props: PromptProps) {
   createEffect(() => {
     if (agentLabel()) revealedPromptMetadata.add(local)
   })
-  const borderHighlight = createMemo(() => tint(theme.border.base, highlight(), agentMetaAlpha()))
+  const CYBER_AMETHYST = RGBA.fromHex("#8442c2")
+  const CYBER_CYAN = RGBA.fromHex("#28a4c4")
+  const CYBER_ICE = RGBA.fromHex("#dce6f7")
+  const [promptPulseCount, setPromptPulseCount] = createSignal(0)
+  const kineticBorder = createAnimatable(
+    { energy: 0, flash: 0 },
+    { enabled: animationsEnabled, transition: tween({ duration: 0.34 }) },
+  )
+  const triggerTypingPulse = () => {
+    if (!animationsEnabled()) return
+    const current = kineticBorder.value()
+    kineticBorder.jump({
+      energy: Math.min(1, current.energy + 0.38),
+      flash: current.flash,
+    })
+    kineticBorder.animate({ energy: 0, flash: 0 })
+  }
+  const triggerSubmitPulse = () => {
+    setPromptPulseCount((count) => count + 1)
+    if (!animationsEnabled()) return
+    kineticBorder.jump({ energy: 1, flash: 1 })
+    kineticBorder.animate({ energy: 0, flash: 0 })
+  }
+  const borderHighlight = createMemo(() => {
+    const base = tint(theme.border.base, highlight(), agentMetaAlpha())
+    if (muted()) return base
+    const { energy, flash } = kineticBorder.value()
+    if (energy <= 0.005 && flash <= 0.005) return base
+    const energized =
+      energy < 0.5
+        ? tint(base, CYBER_AMETHYST, energy * 2 * 0.75)
+        : tint(tint(base, CYBER_AMETHYST, 0.75), CYBER_CYAN, (energy - 0.5) * 2 * 0.85)
+    return flash > 0.005 ? tint(energized, CYBER_ICE, flash * 0.65) : energized
+  })
   const footerInput = () => ({
     sessionID: props.sessionID,
     mode: store.mode,
@@ -1584,11 +1620,11 @@ export function Prompt(props: PromptProps) {
     if (props.showPlaceholder === false) return undefined
     const value = (() => {
       if (store.mode === "shell") {
-        if (!shell().length) return undefined
+        if (!shell().length) return 'Run a command… "nmap -sV -T4 target"'
         return `Run a command… "${shell()[store.placeholder % shell().length]}"`
       }
-      if (!list().length) return undefined
-      return `Ask anything… "${list()[store.placeholder % list().length]}"`
+      if (!list().length) return "Direct AI RHAMZ… (/ commands, @ context)"
+      return `Direct AI RHAMZ… "${list()[store.placeholder % list().length]}"`
     })()
     if (!value) return undefined
     const width = dimensions().width < 44 ? dimensions().width - 5 : Math.min(75, dimensions().width - 4) - 5
@@ -1621,28 +1657,42 @@ export function Prompt(props: PromptProps) {
     onMove: () => void move.open(),
   })
 
+  const promptBg = createMemo(() => theme.decrease(theme.background.raised.base))
+
   const spinnerDef = createMemo(() => {
     const color = promptDisplay().agentColor ?? theme.border.base
+    const trailColors = [
+      CYBER_ICE,
+      CYBER_CYAN,
+      CYBER_AMETHYST,
+      color,
+      RGBA.fromValues(color.r, color.g, color.b, 0.55),
+      RGBA.fromValues(color.r, color.g, color.b, 0.25),
+    ]
     return {
       frames: createFrames({
         color,
+        colors: trailColors,
+        width: 9,
+        holdStart: 14,
+        holdEnd: 6,
         style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
+        inactiveFactor: 0.5,
+        minAlpha: 0.25,
       }),
       color: createColors({
         color,
+        colors: trailColors,
+        width: 9,
+        holdStart: 14,
+        holdEnd: 6,
         style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
+        inactiveFactor: 0.5,
+        minAlpha: 0.25,
       }),
     }
   })
   const maxHeight = createMemo(() => Math.max(6, Math.floor(dimensions().height / 3)))
-
-  const promptBg = createMemo(() => theme.decrease(theme.background.raised.base))
 
   return (
     <>
@@ -1733,8 +1783,12 @@ export function Prompt(props: PromptProps) {
                 </Show>
               </box>
             </Show>
-            <textarea
+            <kinetic_textarea
               width="100%"
+              kinetic={animationsEnabled()}
+              bloomColor={CYBER_CYAN}
+              wakeColor={CYBER_AMETHYST}
+              backdropColor={promptBg()}
               placeholder={placeholderText()}
               placeholderColor={theme.text.muted}
               textColor={muted() ? theme.text.muted : theme.text.base}
@@ -1748,6 +1802,7 @@ export function Prompt(props: PromptProps) {
                 auto()?.onInput(value)
                 syncExtmarksWithPromptParts()
                 setCursorVersion((value) => value + 1)
+                triggerTypingPulse()
               }}
               onCursorChange={() => setCursorVersion((value) => value + 1)}
               onKeyDown={(e: { preventDefault(): void }) => {
@@ -1830,7 +1885,7 @@ export function Prompt(props: PromptProps) {
                 provider={promptDisplay().providerLabel}
                 variant={promptDisplay().variant}
                 muted={!!muted()}
-                highlight={highlight()}
+                highlight={borderHighlight()}
                 agentAlpha={agentMetaAlpha()}
                 modelAlpha={modelMetaAlpha()}
                 variantAlpha={variantMetaAlpha()}
@@ -1867,7 +1922,28 @@ export function Prompt(props: PromptProps) {
                     horizontal: " ",
                   }
             }
-          />
+          >
+            <Show when={promptBg().a !== 0}>
+              <TabPulse
+                edge="below"
+                enabled={animationsEnabled()}
+                active={status() === "running" || kineticBorder.value().energy > 0.06}
+                outerActive={false}
+                promptPulse={promptPulseCount()}
+                outerPromptPulse={0}
+                complete={status() === "idle"}
+                outerComplete={false}
+                glow={kineticBorder.value().energy > 0.02}
+                outerGlow={false}
+                color={CYBER_CYAN}
+                glowColor={CYBER_AMETHYST}
+                flashColor={highlight()}
+                completionColor={RGBA.fromHex("#249e78")}
+                backgroundColor={promptBg()}
+                outerBackgroundColor={theme.background.base}
+              />
+            </Show>
+          </box>
         </box>
         <box width="100%" flexDirection="row" justifyContent="space-between" gap={2}>
           <Slot path="prompt.footer" input={footerInput()}>
@@ -1886,7 +1962,7 @@ export function Prompt(props: PromptProps) {
                     <box flexDirection="row" gap={1} flexGrow={1} justifyContent="flex-start">
                       <box marginLeft={1}>
                         <Show when={config.animations ?? true} fallback={<text fg={theme.text.muted}>[⋯]</text>}>
-                          <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
+                          <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={34} />
                         </Show>
                       </box>
                       <PromptInterruptStatus

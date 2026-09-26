@@ -12,8 +12,8 @@ type FadeInTextOptions = TextOptions & {
   sweepWidth?: number
 }
 
-const DURATION = 200
-const FEATHER = 8
+const DURATION = 260
+const FEATHER = 14
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
 
 class FadeInTextRenderable extends MaskedTextRenderable {

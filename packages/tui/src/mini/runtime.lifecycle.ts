@@ -173,9 +173,8 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
   })
   if (mono) renderer.on(CliRenderEvents.EXTERNAL_OUTPUT, monoSnapshot)
   const setTitle = (title?: string) => {
-    if (input.host.platform !== "linux") return
-    if (!title || isFallbackTitle(title)) return renderer.setTerminalTitle("OpenCode")
-    renderer.setTerminalTitle(`OC | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
+    if (!title || isFallbackTitle(title)) return renderer.setTerminalTitle("AI RHAMZ")
+    renderer.setTerminalTitle(`RHAMZ | ${title.length > 40 ? title.slice(0, 37) + "…" : title}`)
   }
   setTitle(input.sessionTitle)
   const theme = await resolveRunTheme(renderer, tuiConfig.theme, mono)
@@ -334,7 +333,7 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
       footer.close()
       await footer.idle().catch(() => {})
       footer.destroy()
-      if (input.host.platform === "linux") renderer.setTerminalTitle("")
+      renderer.setTerminalTitle("")
       shutdown(renderer)
       if (!wroteExit) {
         input.host.stdout.write("\n")

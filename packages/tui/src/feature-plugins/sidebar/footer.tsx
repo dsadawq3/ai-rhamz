@@ -40,7 +40,7 @@ export function SidebarOnboarding(props: { context: Plugin.Context; sessionID: s
         <box flexGrow={1} gap={1}>
           <box flexDirection="row" justifyContent="space-between">
             <text fg={props.context.theme.text.base}>
-              <b>Getting started</b>
+              <b>AI RHAMZ</b>
             </text>
             <text
               id="sidebar.footer.getting-started.dismiss"
@@ -54,7 +54,9 @@ export function SidebarOnboarding(props: { context: Plugin.Context; sessionID: s
               ✕
             </text>
           </box>
-          <text fg={props.context.theme.text.muted}>OpenCode includes free models so you can start immediately.</text>
+          <text fg={props.context.theme.text.muted}>
+            Unchained offensive security, RE & low-level engineering runtime.
+          </text>
           <text fg={props.context.theme.text.muted}>
             Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
           </text>

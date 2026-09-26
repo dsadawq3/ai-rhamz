@@ -127,7 +127,7 @@ const layer = Layer.effect(
       const stored = yield* kv.get(ProviderKey)
       const decoded = Schema.decodeUnknownOption(Selection)(stored)
       if (stored !== undefined && Option.isNone(decoded)) yield* kv.remove(ProviderKey)
-      return Option.getOrUndefined(decoded)
+      return Option.getOrUndefined(decoded) ?? "random"
     })
 
     const randomProvider = (now: number, affinity: { provider?: ID }, attempted?: Set<ID>) => {

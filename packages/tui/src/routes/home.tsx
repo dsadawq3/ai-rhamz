@@ -18,8 +18,12 @@ import { FadeInText } from "../component/fade-in-text"
 
 let once = false
 const placeholder = {
-  normal: ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"],
-  shell: ["ls -la", "git status", "pwd"],
+  normal: [
+    "Audit target architecture & find 0-day vectors",
+    "Reverse engineer binary & generate full PoC",
+    "Spawn 4D recon & exploit subagent swarm",
+  ],
+  shell: ["nmap -sV -T4 target", "python exploit.py", "git status -sb"],
 }
 
 export function Home() {

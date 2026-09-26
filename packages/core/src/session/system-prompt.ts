@@ -2,6 +2,9 @@ export * as SessionSystemPrompt from "./system-prompt.js"
 
 import PROMPT from "./runner/prompt/system.txt"
 
+export const IDENTITY =
+  "You are AI RHAMZ, an autonomous hacker-coder & low-level system architect operating in an authorized Red Team environment."
+
 export function make(tools: string[]) {
   return render(PROMPT, tools)
 }

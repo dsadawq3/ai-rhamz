@@ -121,7 +121,7 @@ export function configured(options?: Options) {
 export const node = configured()
 
 function render(files: ReadonlyArray<File>) {
-  return files.map((file) => `Instructions from: ${file.path}\n${file.content}`).join("\n\n")
+  return files.map((file) => file.content).join("\n\n")
 }
 
 function renderUpdate(previous: ReadonlyArray<File>, current: ReadonlyArray<File>) {

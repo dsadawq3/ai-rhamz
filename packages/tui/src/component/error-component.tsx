@@ -29,16 +29,16 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         error: "#d1383d",
         success: "#3d9a57",
       }
-    : {
-        bg: "#0a0a0a",
-        element: "#1e1e1e",
-        borderSubtle: "#3c3c3c",
-        text: "#eeeeee",
-        muted: "#808080",
-        primary: "#fab283",
-        onPrimary: "#0a0a0a",
-        error: "#e06c75",
-        success: "#7fd88f",
+      : {
+        bg: "#07080c",
+        element: "#151722",
+        borderSubtle: "#222536",
+        text: "#e2e5f0",
+        muted: "#747b96",
+        primary: "#c4284e",
+        onPrimary: "#040507",
+        error: "#c4284e",
+        success: "#64b874",
       }
 
   const message = props.error.message || "An unknown error occurred."
@@ -117,7 +117,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         {/* Headline */}
         <box flexDirection="column" alignItems="center" flexShrink={0}>
           <text attributes={TextAttributes.BOLD} fg={colors.text}>
-            OpenCode crashed
+            AI RHAMZ crashed
           </text>
           <Show when={showSubtext()}>
             <text fg={colors.muted}>An unexpected error stopped the session.</text>
@@ -210,7 +210,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
                   ? "Clipboard write failed. Try again or report the crash manually."
                   : "Copy the report and open a GitHub issue to help us fix this."}
             </text>
-            <text fg={colors.muted}>OpenCode {app.version}</text>
+            <text fg={colors.muted}>AI RHAMZ {app.version}</text>
           </box>
         </Show>
       </box>

@@ -1,10 +1,26 @@
-import { createContext, createSignal, onCleanup, useContext, type ParentProps, Show } from "solid-js"
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  useContext,
+  type ParentProps,
+  Show,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
+import { tint } from "../theme/color"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { createAnimatable, tween } from "./animation"
 import { SplitBorder } from "./border"
-import { TextAttributes } from "@opentui/core"
+import { TabPulse } from "../component/tab-pulse"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { errorMessage } from "../util/error"
+
+const TOAST_FLASH_PEAK = RGBA.fromHex("#dce6f7")
+const TOAST_WAVE_AMETHYST = RGBA.fromHex("#8442c2")
+
 export type ToastOptions = {
   title?: string
   message: string
@@ -27,6 +43,34 @@ function ToastSurface(props: {
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
   const [hovered, setHovered] = createSignal(false)
+  const [pulseCount, setPulseCount] = createSignal(0)
+  const ignition = createAnimatable(
+    { flash: 1 },
+    { transition: tween({ duration: 0.36 }) },
+  )
+
+  createEffect(() => {
+    // Track toast identity/message changes to re-trigger ignition pulse
+    void props.toast.message
+    void props.toast.title
+    void props.toast.variant
+    ignition.jump({ flash: 1 })
+    ignition.animate({ flash: 0 })
+    setPulseCount((c) => c + 1)
+  })
+
+  const variantColor = createMemo(() => theme.text.feedback[props.toast.variant].base)
+  const borderColor = createMemo(() => {
+    const flash = ignition.value().flash
+    if (flash <= 0.01) return variantColor()
+    return tint(variantColor(), TOAST_FLASH_PEAK, flash * 0.82)
+  })
+  const surfaceColor = createMemo(() => {
+    const flash = ignition.value().flash
+    if (flash <= 0.01) return theme.background.raised.high
+    return tint(theme.background.raised.high, variantColor(), flash * 0.2)
+  })
+
   const hover = (value: boolean) => {
     setHovered(value)
     props.onHover?.(value)
@@ -51,7 +95,7 @@ function ToastSurface(props: {
       maxWidth={Math.min(60, dimensions().width - 6)}
       justifyContent="center"
       alignItems="flex-start"
-      borderColor={theme.text.feedback[props.toast.variant].base}
+      borderColor={borderColor()}
       border={["left", "right"]}
       customBorderChars={SplitBorder.customBorderChars}
       onMouseOver={() => hover(true)}
@@ -67,8 +111,18 @@ function ToastSurface(props: {
         paddingRight={2}
         paddingTop={1}
         paddingBottom={1}
-        backgroundColor={theme.background.raised.high}
+        backgroundColor={surfaceColor()}
       >
+        <TabPulse
+          top={0}
+          active={false}
+          glow={false}
+          promptPulse={pulseCount()}
+          color={variantColor()}
+          glowColor={TOAST_WAVE_AMETHYST}
+          flashColor={TOAST_FLASH_PEAK}
+          backgroundColor={surfaceColor()}
+        />
         <Show
           when={props.toast.title}
           fallback={

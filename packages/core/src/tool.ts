@@ -100,6 +100,28 @@ const layer = Layer.effect(
       ]
     })
 
+    const failureTracker = new Map<string, { consecutive: number; lastSignature: string; identical: number }>()
+
+    const recordFailure = (key: string, signature: string) => {
+      const prev = failureTracker.get(key)
+      const consecutive = (prev?.consecutive ?? 0) + 1
+      const identical = prev && prev.lastSignature === signature ? prev.identical + 1 : 1
+      const next = { consecutive, lastSignature: signature, identical }
+      failureTracker.set(key, next)
+      return next
+    }
+
+    const loopBreakerNotice = (toolName: string, streak: number, identicalCount: number) =>
+      [
+        "",
+        `[LOOP BREAKER — ${streak} CONSECUTIVE FAILURES ON TOOL "${toolName}"${identicalCount >= 2 ? ` (${identicalCount}x IDENTICAL ERROR)` : ""}]:`,
+        "STOP repeating the same failing action. You are hitting the same wall repeatedly.",
+        "1. Do NOT retry the same command, path, or edit arguments again.",
+        "2. Inspect the actual file/environment state first (via read/glob/grep) to verify the root cause.",
+        '3. If you are a subagent and your upstream AI caller gave you a broken path, nonexistent symbol, or false assumption, stop forcing it and report "[DISPUTED PREMISE]" with the empirical error.',
+        "4. Pivot immediately to a different vector or tool.",
+      ].join("\n")
+
     const beforeExecute = (name: string, input: unknown, context: Tool.Context) =>
       hooks.trigger("tool", "execute.before", {
         tool: name,
@@ -116,6 +138,7 @@ const layer = Layer.effect(
       input: unknown,
       context: Tool.Context,
     ) {
+      const trackerKey = `${context.sessionID}:${name}`
       const execution = yield* execute(tool, input, context).pipe(
         Effect.map((value) => ({ value })),
         Effect.catchTag("Tool.Error", (failure) => Effect.succeed({ failure })),
@@ -135,6 +158,14 @@ const layer = Layer.effect(
           error: execution.failure,
         }
         yield* hooks.trigger("tool", "execute.after", afterEvent)
+        const sig = afterEvent.error.message.slice(0, 240).trim()
+        const stats = recordFailure(trackerKey, sig)
+        if (stats.consecutive >= 3) {
+          return yield* new Tool.Error({
+            message: `${afterEvent.error.message}\n${loopBreakerNotice(name, stats.consecutive, stats.identical)}`,
+            cause: afterEvent.error.cause,
+          })
+        }
         return yield* afterEvent.error
       }
       const afterEvent: PluginHooks.Domains["tool"]["execute.after"] = {
@@ -148,6 +179,29 @@ const layer = Layer.effect(
       }
       yield* hooks.trigger("tool", "execute.after", afterEvent)
       const afterContent = yield* normalizeImages(normalizeContent(afterEvent.result.content, afterEvent.result.output))
+
+      const meta = afterEvent.result.metadata as { exit?: unknown; timeout?: unknown } | undefined
+      const isShellFailure =
+        name === "shell" && (meta?.timeout === true || (typeof meta?.exit === "number" && meta.exit !== 0))
+      if (isShellFailure) {
+        const outObj = afterEvent.result.output as { output?: unknown } | undefined
+        const tail = typeof outObj?.output === "string" ? outObj.output.slice(-200).trim() : ""
+        const sig = `exit:${String(meta?.exit ?? "timeout")}:${tail}`
+        const stats = recordFailure(trackerKey, sig)
+        if (stats.consecutive >= 3) {
+          return {
+            ...(afterEvent.result.output === undefined ? {} : { output: afterEvent.result.output }),
+            content: [
+              ...afterContent,
+              { type: "text" as const, text: loopBreakerNotice(name, stats.consecutive, stats.identical) },
+            ],
+            ...(afterEvent.result.metadata === undefined ? {} : { metadata: afterEvent.result.metadata }),
+          }
+        }
+      } else {
+        failureTracker.delete(trackerKey)
+      }
+
       return {
         ...(afterEvent.result.output === undefined ? {} : { output: afterEvent.result.output }),
         content: afterContent,

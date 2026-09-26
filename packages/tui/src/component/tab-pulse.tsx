@@ -25,23 +25,24 @@ type TabPulseOptions = RenderableOptions<TabPulseRenderable> & {
   completionColor?: RGBA
   outerCompletionColor?: RGBA
   backgroundColor?: RGBA
+  outerBackgroundColor?: RGBA
   /** Reports the running sweep's intensity at the tab number's cell, quantized; 0 when idle. */
   onLevel?: (level: number) => void
 }
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
 export const smootherstep = (value: number) => value * value * value * (value * (value * 6 - 15) + 10)
-const RUN_DURATION = 2_800
-const RUN_ATTACK = 450
-const RUN_HEAD = 4
-const RUN_TAIL = 18
-const RUN_FADE_OUT = 500
+const RUN_DURATION = 2_400
+const RUN_ATTACK = 380
+const RUN_HEAD = 6
+const RUN_TAIL = 22
+const RUN_FADE_OUT = 520
 const COMPLETION_DURATION = 1_200
 const COMPLETION_ATTACK = 0.12
-const COMPLETION_OPACITY = 0.18
-const EDGE_FLASH_DURATION = 800
+const COMPLETION_OPACITY = 0.22
+const EDGE_FLASH_DURATION = 720
 const EDGE_FLASH_ATTACK = 0.1
-const EDGE_FLASH_OPACITY = 0.1
+const EDGE_FLASH_OPACITY = 0.14
 const PROMPT_FLASH_SCALE = 2
 const GLOW_IGNITION_DURATION = 600
 const GLOW_IGNITION_PEAK = 1.5
@@ -436,6 +437,7 @@ class TabPulseRenderable extends Renderable {
   private _completionColor: RGBA
   private _outerCompletionColor: RGBA
   private _backgroundColor: RGBA
+  private _outerBackgroundColor: RGBA
   private renderColor = RGBA.fromInts(0, 0, 0)
   private outerRenderColor = RGBA.fromInts(0, 0, 0)
   private _onLevel: ((level: number) => void) | undefined
@@ -482,6 +484,7 @@ class TabPulseRenderable extends Renderable {
     this._completionColor = options.completionColor ?? this._color
     this._outerCompletionColor = options.outerCompletionColor ?? options.completionColor ?? this._outerColor
     this._backgroundColor = options.backgroundColor ?? RGBA.defaultBackground()
+    this._outerBackgroundColor = options.outerBackgroundColor ?? this._backgroundColor
     this._onLevel = options.onLevel
   }
 
@@ -629,6 +632,12 @@ class TabPulseRenderable extends Renderable {
     this.requestRender()
   }
 
+  set outerBackgroundColor(value: RGBA) {
+    if (value.equals(this._outerBackgroundColor)) return
+    this._outerBackgroundColor = value
+    this.requestRender()
+  }
+
   protected override onUpdate(deltaTime: number): void {
     if (!this.live) return
     this.inner.advance(deltaTime)
@@ -691,7 +700,7 @@ class TabPulseRenderable extends Renderable {
               intensityAt(index, fronts![0], RUN_HEAD, RUN_TAIL),
               intensityAt(index, fronts![1], RUN_HEAD, RUN_TAIL),
             ) *
-            0.14 *
+            0.18 *
             running
       const outerSweep =
         outerRunning === 0
@@ -700,7 +709,7 @@ class TabPulseRenderable extends Renderable {
               intensityAt(index, outerFronts![0], RUN_HEAD, RUN_TAIL),
               intensityAt(index, outerFronts![1], RUN_HEAD, RUN_TAIL),
             ) *
-            0.14 *
+            0.18 *
             outerRunning
       blendTabPulseColor(
         this.renderColor,
@@ -723,7 +732,7 @@ class TabPulseRenderable extends Renderable {
       }
       blendTabPulseColor(
         this.outerRenderColor,
-        this._backgroundColor,
+        this._outerBackgroundColor,
         this._outerGlowColor,
         this._outerColor,
         this._outerFlashColor,
@@ -781,6 +790,7 @@ export function TabPulse(props: {
   completionColor?: RGBA
   outerCompletionColor?: RGBA
   backgroundColor: RGBA
+  outerBackgroundColor?: RGBA
   onLevel?: (level: number) => void
 }) {
   return (
@@ -812,6 +822,7 @@ export function TabPulse(props: {
       completionColor={props.completionColor ?? props.color}
       outerCompletionColor={props.outerCompletionColor ?? props.completionColor ?? props.outerColor ?? props.color}
       backgroundColor={props.backgroundColor}
+      outerBackgroundColor={props.outerBackgroundColor ?? props.backgroundColor}
       onLevel={props.onLevel}
     />
   )

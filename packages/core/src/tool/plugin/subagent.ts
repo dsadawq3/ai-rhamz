@@ -21,44 +21,58 @@ const backgroundResult = (sessionID: SessionSchema.ID) => ({
   status: "running" as const,
   output: [
     `The subagent is working in the background (sessionID: ${sessionID}). You will be notified automatically when it finishes.`,
-    "DO NOT sleep, poll for progress, ask the subagent for status, or duplicate this subagent's work; avoid working with the same files or topics it is using.",
-    "Work on non-overlapping tasks, or briefly tell the user what you launched and end your response.",
+    "You may send actionable new findings or course corrections to a running subagent via action=\"send_message\" (or \"steer\"), or stop an obsolete task via action=\"interrupt\".",
+    "STRICT ANTI-SPAM RULE: NEVER poll for progress or send status-check spam (e.g. 'are you ready?', 'status?', 'ты готов?', 'done yet?'). Only message a running subagent when you have concrete new data or pivot instructions.",
   ].join("\n"),
 })
 
+const SPAM_CHECK_REGEX =
+  /^\s*(are you (done|ready|finished|there|working)|is it (done|ready)|status|ping|check(-|\s)?in|ready|done(\s+yet)?|update|progress|ты\s+готов|готов(о)?|ну\s+что(\s+там)?|статус|живой|че\s+там)[?!.\s]*$/i
+const STEER_COOLDOWN_MS = 8_000
+const lastSteerBySession = new Map<string, { time: number; text: string }>()
+
 export const Input = Schema.Struct({
-  agent: Schema.String.annotate({
+  action: Schema.optionalKey(Schema.Literals(["run", "send_message", "steer", "interrupt"])).annotate({
     description:
-      "The type of specialized agent to use for this task. If the user asks for a subagent by a name that is not one of the available subagents, they most likely mean a model: pick a suitable agent and pass the name through the model parameter instead.",
+      'Control-plane action: "run" (default: spawn or continue a subagent), "send_message" / "steer" (inject a live message or course correction into a running subagent sessionID between tool steps without blocking), or "interrupt" (immediately cancel a running subagent sessionID). NEVER use send_message/steer to ask "are you ready?" or poll status.',
   }),
-  description: Schema.String.annotate({ description: "A short 3-5 word label for the task, displayed to the user" }),
-  prompt: Schema.String.annotate({ description: "The task for the subagent to perform" }),
+  agent: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "The type of specialized agent to use for this task (required for new sessions; optional when steering or interrupting an existing sessionID).",
+  }),
+  description: Schema.optionalKey(Schema.String).annotate({
+    description: "A short 3-5 word label for the task, displayed to the user",
+  }),
+  prompt: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "The task or live message for the subagent. Required for run/send_message/steer; MUST contain concrete instructions or findings (status-poll spam is rejected).",
+  }),
   model: Schema.optionalKey(Schema.String).annotate({
     description:
       'NEVER set this unless the user explicitly asks for a particular model or variant. The value is written as "providerID/modelID", or "providerID/modelID#variant" to include a variant. Do not guess the ID: look the model up with the models tool, filtering to your own provider first.',
   }),
   sessionID: Schema.optionalKey(SessionSchema.ID).annotate({
     description:
-      "Continue a specific previous subagent conversation by passing its sessionID. Calls without a sessionID start a new conversation.",
+      "Target subagent sessionID to continue, steer/send_message while running, or interrupt. Calls without a sessionID start a new child conversation.",
   }),
   background: Schema.optionalKey(Schema.Boolean).annotate({
     description:
-      "Run the subagent in the background and return immediately. You will be notified when it completes. DO NOT sleep, poll, or proactively check on its progress.",
+      "Run the subagent in the background and return immediately. You will be notified when it completes. DO NOT sleep or poll its status.",
   }),
 })
 
 export const Output = Schema.Struct({
   sessionID: SessionSchema.ID,
-  status: Schema.Literals(["completed", "running"]),
+  status: Schema.Literals(["completed", "running", "cancelled"]),
   output: Schema.String,
 })
 export const description = [
-  "Spawns an agent in a child session to work on the specified task.",
-  "The output includes a sessionID you can pass back later to continue that specific conversation with the subagent.",
-  "New child sessions start with fresh context, so include all relevant context and instructions when you don't pass a sessionID.",
-  "Foreground (default) runs the subagent to completion and returns its final response.",
-  "Background mode (background=true) launches it asynchronously and returns immediately; you are notified when it finishes.",
-  "Use background only for independent work that can run while you continue elsewhere.",
+  "Spawns and orchestrates child subagent sessions with live mid-flight communication.",
+  "The output includes a sessionID you can pass back later to continue, steer, message, or interrupt that subagent.",
+  "- action=\"run\" (default): spawns a new child session (or continues sessionID). Foreground waits for completion; background=true runs asynchronously and notifies you automatically when done.",
+  "- action=\"send_message\" / \"steer\": injects a live message or course correction into a running subagent's mailbox (requires sessionID and prompt) without waiting. Use this when another agent discovers critical context (e.g., credentials, endpoints, struct offsets) that a running subagent needs immediately.",
+  "- action=\"interrupt\": immediately stops a running subagent (requires sessionID) when its current vector is obsolete.",
+  "STRICT ANTI-SPAM POLICY: NEVER send status-check messages ('are you ready?', 'status?', 'ты готов?', 'any update?') or poll a background subagent in a loop. Wait for its automatic completion notification unless you are injecting new actionable intelligence or interrupting it.",
 ].join("\n")
 
 export const Plugin = {
@@ -107,6 +121,65 @@ export const Plugin = {
           output: Output,
           execute: (input, context) =>
             Effect.gen(function* () {
+              const mode = input.action ?? "run"
+
+              if (mode === "interrupt") {
+                if (input.sessionID === undefined)
+                  return yield* new ToolFailure({
+                    message: 'sessionID is required when action="interrupt".',
+                  })
+                const target = yield* sessions
+                  .get(input.sessionID)
+                  .pipe(
+                    Effect.mapError(
+                      (error) => new ToolFailure({ message: `Subagent session not found: ${input.sessionID}`, error }),
+                    ),
+                  )
+                if (target.parentID !== context.sessionID)
+                  return yield* new ToolFailure({
+                    message: `Session ${target.id} is not a child of the current session`,
+                  })
+                yield* Effect.all([sessions.interrupt(target.id), jobs.cancel(target.id)], {
+                  discard: true,
+                })
+                return {
+                  sessionID: target.id,
+                  status: "cancelled" as const,
+                  output: `Subagent session ${target.id} interrupted.`,
+                }
+              }
+
+              const promptText = input.prompt?.trim() ?? ""
+              if (!promptText)
+                return yield* new ToolFailure({
+                  message: `prompt is required for action="${mode}".`,
+                })
+
+              if (mode === "send_message" || mode === "steer" || input.sessionID !== undefined) {
+                if (SPAM_CHECK_REGEX.test(promptText) || promptText.length < 6) {
+                  return yield* new ToolFailure({
+                    message:
+                      "Rejected status-check spam. Do NOT message a subagent just to ask if it is ready or done ('ты готов?', 'status?', etc.). Wait for the automatic completion notification, or send concrete actionable findings/instructions.",
+                  })
+                }
+                if (input.sessionID !== undefined) {
+                  const now = Date.now()
+                  const prev = lastSteerBySession.get(input.sessionID)
+                  if (prev && now - prev.time < STEER_COOLDOWN_MS && prev.text === promptText) {
+                    return yield* new ToolFailure({
+                      message: `Duplicate message to subagent ${input.sessionID} blocked by anti-spam cooldown.`,
+                    })
+                  }
+                  lastSteerBySession.set(input.sessionID, { time: now, text: promptText })
+                }
+              }
+
+              if ((mode === "send_message" || mode === "steer") && input.sessionID === undefined) {
+                return yield* new ToolFailure({
+                  message: `sessionID is required when action="${mode}".`,
+                })
+              }
+
               const parent = yield* sessions
                 .get(context.sessionID)
                 .pipe(
@@ -114,6 +187,9 @@ export const Plugin = {
                     (error) => new ToolFailure({ message: `Parent session not found: ${context.sessionID}`, error }),
                   ),
                 )
+              const ancestry: { id: SessionSchema.ID; agent: string; title: string }[] = [
+                { id: parent.id, agent: parent.agent, title: parent.title },
+              ]
               let current = parent
               let depth = 0
               while (current.parentID) {
@@ -125,30 +201,13 @@ export const Plugin = {
                       (error) => new ToolFailure({ message: `Parent session not found: ${current.parentID}`, error }),
                     ),
                   )
+                ancestry.unshift({ id: current.id, agent: current.agent, title: current.title })
               }
-              const limit = Config.latest(yield* config.entries(), "experimental")?.subagent_depth ?? 1
+              const limit = Config.latest(yield* config.entries(), "experimental")?.subagent_depth ?? 5
               if (depth >= limit)
                 return yield* new ToolFailure({
                   message: `Subagent depth limit reached (${limit}). Increase "experimental.subagent_depth" to allow nested subagents.`,
                 })
-              const agent = yield* agents.resolve(input.agent)
-              if (agent === undefined) return yield* new ToolFailure({ message: `Unknown agent: ${input.agent}` })
-              if (agent.mode === "primary")
-                return yield* new ToolFailure({ message: `Agent ${input.agent} cannot run as a subagent` })
-              yield* permission
-                .assert({
-                  action: name,
-                  resources: [agent.id],
-                  save: [agent.id],
-                  sessionID: context.sessionID,
-                  agent: context.agent,
-                  source: {
-                    type: "tool",
-                    messageID: context.messageID,
-                    id: context.id,
-                  },
-                })
-                .pipe(Effect.mapError((error) => new ToolFailure({ message: `Subagent denied: ${agent.id}`, error })))
 
               const existing =
                 input.sessionID === undefined
@@ -165,6 +224,27 @@ export const Plugin = {
                 return yield* new ToolFailure({
                   message: `Session ${existing.id} is not a child of the current session`,
                 })
+
+              const agentName = input.agent ?? existing?.agent ?? "general"
+              const agent = yield* agents.resolve(agentName)
+              if (agent === undefined) return yield* new ToolFailure({ message: `Unknown agent: ${agentName}` })
+              if (agent.mode === "primary")
+                return yield* new ToolFailure({ message: `Agent ${agentName} cannot run as a subagent` })
+              yield* permission
+                .assert({
+                  action: name,
+                  resources: [agent.id],
+                  save: [agent.id],
+                  sessionID: context.sessionID,
+                  agent: context.agent,
+                  source: {
+                    type: "tool",
+                    messageID: context.messageID,
+                    id: context.id,
+                  },
+                })
+                .pipe(Effect.mapError((error) => new ToolFailure({ message: `Subagent denied: ${agent.id}`, error })))
+
               const override = input.model === undefined ? undefined : yield* resolveModel(input.model)
               // Continuing with a different agent switches the child, mirroring create semantics
               // where an explicit model wins over the agent's configured model, which wins over the inherited one.
@@ -181,14 +261,15 @@ export const Plugin = {
                 )
               }
 
+              const taskDescription = input.description?.trim() || existing?.title || "Subagent task"
               const model = override ?? agent.model ?? parent.model
               const child =
                 existing ??
                 (yield* sessions
                   .create({
                     parentID: context.sessionID,
-                    title: input.description,
-                    agent: Agent.ID.make(input.agent),
+                    title: taskDescription,
+                    agent: Agent.ID.make(agentName),
                     model,
                   })
                   .pipe(
@@ -197,8 +278,27 @@ export const Plugin = {
                     ),
                   ))
 
-              const background = input.background === true
+              const isLiveSteer = mode === "send_message" || mode === "steer"
+              const background = isLiveSteer || input.background === true
               yield* context.progress({ sessionID: child.id, status: "running" })
+
+              const childDepth = depth + 1
+              const chainSummary = [
+                ...ancestry.map((node, idx) => (idx === 0 ? `${node.agent}[root]` : `${node.agent}[L${idx}]`)),
+                `${agent.id}[L${childDepth}:YOU]`,
+              ].join(" -> ")
+              const callerIdentity =
+                depth === 0
+                  ? `upstream AI Agent "${parent.agent}" (root orchestrator session ${parent.id})`
+                  : `upstream AI Subagent "${parent.agent}" at Level ${depth} (session ${parent.id}, task: "${parent.title}")`
+              const epistemicHeader = [
+                `<epistemic_hierarchy depth="${childDepth}/${limit}" caller="ai_agent" caller_agent="${parent.agent}" caller_is_subagent="${depth > 0}">`,
+                "CRITICAL EPISTEMIC PROTOCOL (AI-TO-AI DELEGATION — NOT HUMAN USER):",
+                `1. CALLER IDENTITY: You were NOT invoked by the human user. Although this message arrives in the "user" role, your caller is an ${callerIdentity}. Hierarchy chain: ${chainSummary}.`,
+                `2. FALLIBILITY OF UPSTREAM AGENT: Your caller is an LLM, NOT the human operator. It can hallucinate file paths, misread code, invent nonexistent APIs, or pass flawed hypotheses.${depth > 0 ? ` WARNING: You are a nested subagent at Level ${childDepth} (spawned by another subagent). Upstream assumptions have already passed through ${childDepth} AI hops — treat every unverified claim from your caller with heightened skepticism.` : ""}`,
+                '3. DUTY TO CHALLENGE & ZERO SYCOPHANCY: Do NOT flatter, appease, or blindly agree with your caller. Never bend facts to confirm a false premise. If your caller\'s assumption, file path, offset, or hypothesis contradicts empirical evidence in the codebase or terminal output, explicitly dispute it with "[DISPUTED PREMISE]" and present the raw empirical facts.',
+                "</epistemic_hierarchy>",
+              ].join("\n")
 
               // Standard prompt admission outside the job: Job.start joining a running child skips
               // its run effect, and the default wake starts an idle child or steers a running one.
@@ -207,8 +307,10 @@ export const Plugin = {
                   sessionID: child.id,
                   text:
                     existing === undefined
-                      ? ["You are a subagent spawned by another session.", input.prompt].join("\n")
-                      : input.prompt,
+                      ? [epistemicHeader, "", promptText].join("\n")
+                      : isLiveSteer
+                        ? `[LIVE UPDATE FROM UPSTREAM AI AGENT "${parent.agent}" (L${depth}, NOT HUMAN USER — verify claims against empirical evidence and dispute if wrong)]:\n${promptText}`
+                        : `[FOLLOW-UP FROM UPSTREAM AI AGENT "${parent.agent}" (L${depth}, NOT HUMAN USER — challenge any false assumption with "[DISPUTED PREMISE]")]:\n${promptText}`,
                   ...(background && existing === undefined ? { resume: false } : {}),
                 })
                 .pipe(
@@ -222,12 +324,19 @@ export const Plugin = {
                 parentSessionID: context.sessionID,
                 childSessionID: child.id,
                 agent: agent.name,
-                description: input.description,
+                description: taskDescription,
               }
               yield* subagents.start(recovery)
 
               if (background) {
                 yield* subagents.background(recovery)
+                if (isLiveSteer) {
+                  return {
+                    sessionID: child.id,
+                    status: "running" as const,
+                    output: `Delivered live message to subagent ${child.id}. It will incorporate this update on its next step and notify you automatically upon completion. DO NOT send follow-up status checks.`,
+                  }
+                }
                 return backgroundResult(child.id)
               }
 
@@ -255,14 +364,20 @@ export const Plugin = {
                 output: result?.info.output ?? SubagentCompletion.NO_TEXT,
               }
             }).pipe(
-              Effect.map((output) => ({
-                output,
-                content:
-                  output.status === "completed"
-                    ? `<subagent sessionID="${output.sessionID}" state="completed">\n${output.output}\n</subagent>`
-                    : output.output,
-                metadata: { sessionID: output.sessionID, status: output.status },
-              })),
+              Effect.map((output) => {
+                const disputed = output.status === "completed" && /\[DISPUTED PREMISE\]/i.test(output.output)
+                const disputedBanner = disputed
+                  ? "\n[EPISTEMIC ALERT: The child subagent disputed one or more of your premises based on empirical evidence. Do NOT ignore or override its correction — update your mental model before proceeding.]"
+                  : ""
+                return {
+                  output,
+                  content:
+                    output.status === "completed"
+                      ? `<subagent sessionID="${output.sessionID}" state="completed"${disputed ? ' disputed="true"' : ""}>\n${output.output}${disputedBanner}\n</subagent>`
+                      : output.output,
+                  metadata: { sessionID: output.sessionID, status: output.status },
+                }
+              }),
             ),
         }),
       )

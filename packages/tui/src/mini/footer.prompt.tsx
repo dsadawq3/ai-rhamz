@@ -358,7 +358,7 @@ export function createPromptState(input: PromptInput): PromptState {
     }
 
     return new StyledText([
-      fg(input.theme().muted)(`Ask anything, / for commands, @ for context${input.mono() ? "..." : "…"}`),
+      fg(input.theme().muted)(`Direct AI RHAMZ · / commands · @ context${input.mono() ? "..." : "…"}`),
     ])
   })
 
@@ -533,7 +533,7 @@ export function createPromptState(input: PromptInput): PromptState {
         description: "compact older session context to free space",
       } satisfies SlashOption,
       ...EXIT_COMMANDS.map(
-        (name) => ({ kind: "slash", name, display: `/${name}`, description: "close OpenCode" }) satisfies SlashOption,
+        (name) => ({ kind: "slash", name, display: `/${name}`, description: "close AI RHAMZ" }) satisfies SlashOption,
       ),
     ]
     const hidden = new Set(builtins.map((item) => item.name))

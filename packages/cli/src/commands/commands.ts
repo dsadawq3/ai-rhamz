@@ -35,8 +35,8 @@ const PermissionParams = {
   ),
 }
 
-const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME : "opencode", {
-  description: "OpenCode command line interface",
+const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME : "rhamz", {
+  description: "AI RHAMZ · Autonomous Offensive & Low-Level Engine",
   params: {
     ...ServerParams,
     ...PermissionParams,

@@ -1,13 +1,32 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { batch, createContext, createEffect, onCleanup, Show, useContext, type JSX, type ParentProps } from "solid-js"
+import {
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+  useContext,
+  type JSX,
+  type ParentProps,
+} from "solid-js"
 import { Keymap } from "../context/keymap"
 import { ThemeContextProvider, useTheme } from "../context/theme"
+import { tint } from "../theme/color"
+import { createAnimatable, tween } from "./animation"
+import { TabPulse } from "../component/tab-pulse"
 import { InputRenderable, MouseButton, Renderable, RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
 import { useClipboard } from "../context/clipboard"
 import { useConfig } from "../config"
 import { copy, copyOnSelectRelease } from "../util/selection"
+
+const DIALOG_WAVE_CYAN = RGBA.fromHex("#28a4c4")
+const DIALOG_WAVE_AMETHYST = RGBA.fromHex("#8442c2")
+const DIALOG_WAVE_PEAK = RGBA.fromHex("#dce6f7")
 
 export type DialogSize = "medium" | "large" | "xlarge"
 
@@ -27,47 +46,78 @@ export function Dialog(
   const dimensions = useTerminalDimensions()
   const theme = useTheme().surface("dialog")
   const renderer = useRenderer()
+  const [pulseCount, setPulseCount] = createSignal(0)
+  const entrance = createAnimatable(
+    { backdrop: 0, flash: 1 },
+    { transition: tween({ duration: 0.26 }) },
+  )
+
+  onMount(() => {
+    entrance.animate({ backdrop: 1, flash: 0 })
+    setPulseCount((c) => c + 1)
+  })
+
+  const backdropColor = createMemo(() => {
+    const progress = entrance.value().backdrop
+    return RGBA.fromInts(4, 5, 10, Math.round(55 + 110 * progress))
+  })
+
+  const surfaceColor = createMemo(() => {
+    const flash = entrance.value().flash
+    if (flash <= 0.01) return theme.background.base
+    return tint(theme.background.base, DIALOG_WAVE_CYAN, flash * 0.18)
+  })
 
   let dismiss = false
   return (
     <ThemeContextProvider context="dialog">
       <box
-      onMouseDown={() => {
-        dismiss = !!renderer.getSelection()
-      }}
-      onMouseUp={() => {
-        if (dismiss) {
-          dismiss = false
-          return
-        }
-        props.onClose?.()
-      }}
-      width={dimensions().width}
-      height={dimensions().height}
-      alignItems="center"
-      justifyContent={props.centered ? "center" : undefined}
-      position="absolute"
-      zIndex={3000}
-      paddingTop={props.centered ? 0 : dimensions().height / 4}
-      left={0}
-      top={0}
-      backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
-    >
-      <box
-        onMouseUp={(e: { stopPropagation(): void }) => {
-          // A selection release must bubble up to the copy-on-select handler in
-          // DialogProvider; the backdrop's dismiss flag keeps it from closing the dialog.
-          if (renderer.getSelection()?.getSelectedText()) return
-          dismiss = false
-          e.stopPropagation()
+        onMouseDown={() => {
+          dismiss = !!renderer.getSelection()
         }}
-        width={dialogWidth(props.size ?? "medium")}
-        maxWidth={dimensions().width - 2}
-        backgroundColor={theme.background.base}
-        paddingTop={1}
+        onMouseUp={() => {
+          if (dismiss) {
+            dismiss = false
+            return
+          }
+          props.onClose?.()
+        }}
+        width={dimensions().width}
+        height={dimensions().height}
+        alignItems="center"
+        justifyContent={props.centered ? "center" : undefined}
+        position="absolute"
+        zIndex={3000}
+        paddingTop={props.centered ? 0 : dimensions().height / 4}
+        left={0}
+        top={0}
+        backgroundColor={backdropColor()}
       >
-        {props.children}
-      </box>
+        <box
+          onMouseUp={(e: { stopPropagation(): void }) => {
+            // A selection release must bubble up to the copy-on-select handler in
+            // DialogProvider; the backdrop's dismiss flag keeps it from closing the dialog.
+            if (renderer.getSelection()?.getSelectedText()) return
+            dismiss = false
+            e.stopPropagation()
+          }}
+          width={dialogWidth(props.size ?? "medium")}
+          maxWidth={dimensions().width - 2}
+          backgroundColor={surfaceColor()}
+          paddingTop={1}
+        >
+          <TabPulse
+            top={0}
+            active={false}
+            glow={false}
+            promptPulse={pulseCount()}
+            color={DIALOG_WAVE_CYAN}
+            glowColor={DIALOG_WAVE_AMETHYST}
+            flashColor={DIALOG_WAVE_PEAK}
+            backgroundColor={surfaceColor()}
+          />
+          {props.children}
+        </box>
       </box>
     </ThemeContextProvider>
   )

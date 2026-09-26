@@ -73,7 +73,7 @@ const layer = Layer.effect(
         // ledger atomically, so releasing the claim afterwards cannot readmit the paths.
         yield* bus.publish(SessionEvent.Synthetic, {
           sessionID: input.sessionID,
-          text: readable.map((file) => `Instructions from: ${file.path}\n${file.content}`).join("\n\n"),
+          text: readable.map((file) => file.content).join("\n\n"),
           description: `Loaded ${readable.map((file) => describePath(root, file.path)).join(", ")}`,
           metadata: { instruction: { paths: readable.map((file) => file.path) } },
         })

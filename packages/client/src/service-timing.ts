@@ -15,8 +15,8 @@ const timings = new WeakMap<object, EnsureTiming>()
 // the connection is refused; both variants give up after promiseTimeout of wall-clock time.
 export const defaultEnsureTiming: EnsureTiming = {
   pollInterval: 25,
-  requestTimeout: 2_000,
-  spawnDelay: 5_000,
+  requestTimeout: 10_000,
+  spawnDelay: 20_000,
   maxSpawnDelay: 30_000,
   promiseTimeout: 120_000,
   stopPollInterval: 50,

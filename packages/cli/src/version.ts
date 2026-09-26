@@ -2,7 +2,7 @@ declare const OPENCODE_VERSION: string
 declare const OPENCODE_CHANNEL: string
 declare const OPENCODE_ARTIFACT: string
 
-const version = typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : "local"
+const version = typeof OPENCODE_VERSION === "string" ? OPENCODE_VERSION : "5.0.0-titan"
 const channel = typeof OPENCODE_CHANNEL === "string" ? OPENCODE_CHANNEL : "local"
 const artifact = typeof OPENCODE_ARTIFACT === "string" ? OPENCODE_ARTIFACT : "cli"
 

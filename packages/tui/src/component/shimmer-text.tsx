@@ -8,7 +8,7 @@ type ShimmerTextOptions = TextOptions & {
   shimmer: RGBA
 }
 
-const DURATION = 1200
+const DURATION = 1400
 
 class ShimmerTextRenderable extends MaskedTextRenderable {
   private _shimmer = RGBA.defaultForeground()
@@ -37,8 +37,8 @@ class ShimmerTextRenderable extends MaskedTextRenderable {
     if (!this.visible || this.isDestroyed || !Number.isFinite(this.width) || this.width <= 0 || this.height <= 0) return
     this.elapsed = (this.elapsed + deltaTime) % DURATION
     this.renderMasked(buffer, 0, (end) => {
-      const front = -4 + coast(this.elapsed / DURATION) * (end + 22)
-      return (column) => intensityAt(column, front, 4, 18)
+      const front = -6 + coast(this.elapsed / DURATION) * (end + 30)
+      return (column) => intensityAt(column, front, 6, 24)
     })
   }
 }

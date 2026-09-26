@@ -110,7 +110,7 @@ export function RejectField(props: {
       minHeight={1}
       maxHeight={3}
       wrapMode="word"
-      placeholder="Tell OpenCode what to do differently"
+      placeholder="Instruct AI RHAMZ how to proceed"
       placeholderColor={props.theme.muted}
       textColor={props.theme.formfieldText}
       focusedTextColor={props.theme.formfieldFocusedText}
@@ -322,7 +322,7 @@ export function RunPermissionBody(props: {
           {title()}
         </text>
         <Show when={!compact() && stage() === "reject"}>
-          <text fg={props.theme.muted}>Tell OpenCode what to do differently</text>
+          <text fg={props.theme.muted}>Instruct AI RHAMZ how to proceed</text>
         </Show>
       </box>
 

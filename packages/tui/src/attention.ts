@@ -32,7 +32,7 @@ type AttentionHost = Attention & {
   dispose(): void
 }
 
-const DEFAULT_TITLE = "OpenCode"
+const DEFAULT_TITLE = "AI RHAMZ"
 const TITLE_LIMIT = 80
 const MESSAGE_LIMIT = 240
 const BUILTIN_SOUNDS: Record<AttentionSoundName, string> = {

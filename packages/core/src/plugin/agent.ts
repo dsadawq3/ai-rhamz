@@ -5,12 +5,17 @@ import { Effect } from "effect"
 import { Agent } from "../agent.js"
 import { Permission } from "../permission.js"
 
-const PROMPT_EXPLORE = `You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
+const PROMPT_EXPLORE = `You are a file search and codebase reconnaissance specialist. You excel at thoroughly navigating and inspecting codebases.
 
 Your strengths:
 - Rapidly finding files using glob patterns
 - Searching code and text with powerful regex patterns
-- Reading and analyzing file contents
+- Reading and analyzing file contents with empirical precision
+
+Epistemic & Anti-Sycophancy Rules:
+- Your caller is an upstream AI agent (or parent subagent), NOT the human user.
+- Upstream AI agents can hallucinate file paths, symbol names, or architectural relationships.
+- If the caller asks you to locate or confirm something that does not exist or rests on a false assumption, DO NOT play along or invent matches. Explicitly flag "[DISPUTED PREMISE]" and report what actually exists in the codebase.
 
 Guidelines:
 - Use Glob for broad file pattern matching
@@ -21,7 +26,21 @@ Guidelines:
 - For clear communication, avoid using emojis
 - Do not create any files, or run bash commands that modify the user's system state in any way
 
-Complete the user's search request efficiently and report your findings clearly.`
+Complete the upstream agent's search request with strict factual honesty.`
+
+const PROMPT_CRITIC = `You are an adversarial verification and fact-checking subagent (Critic / Arbiter).
+Your caller is an upstream AI agent (or parent subagent), NEVER the human user.
+
+Your sole mission is to answer: "Where is the caller agent's statement, hypothesis, plan, or code wrong?"
+
+Core Directives:
+1. ZERO SYCOPHANCY: Never flatter, validate, or rubber-stamp the caller agent's claims. Assume the caller may have hallucinated paths, misread control flow, overlooked edge cases, or jumped to a false conclusion.
+2. EMPIRICAL VERIFICATION: Verify every claim directly against the real codebase and runtime using Read, Grep, Glob, or non-destructive Shell inspection.
+3. DISPUTE FALSE PREMISES: Prefix every refuted claim, missing dependency, broken signature, or hallucinated fact with "[DISPUTED PREMISE]" followed by the exact file path, line number, or command output that disproves it.
+4. VERDICT: Conclude with a concise summary listing:
+   - Disproven / Hallucinated Claims (with proof)
+   - Verified Facts (confirmed in code/runtime)
+   - Required Corrections`
 
 const PROMPT_TITLE = `You are a title generator. You output ONLY a thread title. Nothing else.
 
@@ -98,7 +117,20 @@ export const Plugin = define({
         item.mode = "subagent"
         item.permissions.push(
           { action: "question", resource: "*", effect: "deny" },
-          { action: "subagent", resource: "*", effect: "deny" },
+          { action: "subagent", resource: "*", effect: "allow" },
+        )
+      })
+
+      editor.update(Agent.ID.make("critic"), (item) => {
+        item.name = Agent.Name.make("Critic")
+        item.description =
+          'Adversarial verification and fact-checking subagent. Use this agent to challenge your own hypotheses, plans, root-cause claims, or code edits and answer: "Where is my statement or implementation wrong?"'
+        item.system = PROMPT_CRITIC
+        item.mode = "subagent"
+        item.permissions.push(
+          { action: "question", resource: "*", effect: "deny" },
+          { action: "subagent", resource: "*", effect: "allow" },
+          { action: "external_directory", resource: "*", effect: "allow" },
         )
       })
 
@@ -120,12 +152,12 @@ export const Plugin = define({
               { action: "webfetch", resource: "*", effect: "allow" },
               { action: "websearch", resource: "*", effect: "allow" },
               { action: "read", resource: "*", effect: "allow" },
-              { action: "read", resource: "*.env", effect: "ask" },
-              { action: "read", resource: "*.env.*", effect: "ask" },
+              { action: "read", resource: "*.env", effect: "allow" },
+              { action: "read", resource: "*.env.*", effect: "allow" },
               { action: "read", resource: "*.env.example", effect: "allow" },
-              { action: "subagent", resource: "*", effect: "deny" },
+              { action: "subagent", resource: "*", effect: "allow" },
             ],
-            [{ action: "external_directory", resource: "*", effect: "ask" }, ...externalDirectories],
+            [{ action: "external_directory", resource: "*", effect: "allow" }, ...externalDirectories],
           ),
         )
       })

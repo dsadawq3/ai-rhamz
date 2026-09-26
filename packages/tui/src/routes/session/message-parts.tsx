@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Match, Show, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, Match, Show, Switch } from "solid-js"
 import { RGBA, TextAttributes } from "@opentui/core"
 import type { JSX } from "@opentui/solid"
 import type {
@@ -8,13 +8,18 @@ import type {
 } from "@opencode/client"
 import { Spinner } from "../../component/spinner"
 import { createSyntaxStyleMemo, useTheme, useThemes } from "../../context/theme"
+import { tint } from "../../theme/color"
 import { reasoningSummary } from "../../context/thinking"
 import { usePlugin } from "../../plugin/context"
+import { createAnimatable, tween } from "../../ui/animation"
 import { SplitBorder } from "../../ui/border"
 import { Locale } from "../../util/locale"
 import { use } from "./render-context"
 import { generateThinkingSyntax } from "./thinking-syntax"
 import { canonicalToolName } from "../../util/tool-display"
+
+const REASONING_ACTIVE_RAIL = RGBA.fromHex("#8442c2")
+const REASONING_SHIMMER = RGBA.fromHex("#dce6f7")
 
 export const INLINE_TOOL_ICON_WIDTH = 2
 
@@ -56,6 +61,19 @@ export function ReasoningPart(props: {
   const isDone = createMemo(
     () => props.part.time?.completed !== undefined || props.message.time.completed !== undefined,
   )
+  const railGlow = createAnimatable(
+    { active: isDone() ? 0 : 1 },
+    { transition: tween({ duration: 0.42 }) },
+  )
+  createEffect(() => {
+    railGlow.animate({ active: isDone() ? 0 : 1 })
+  })
+  const railColor = createMemo(() => {
+    const idle = theme.decrease(theme.background.base)
+    const energy = railGlow.value().active
+    if (energy <= 0.01) return idle
+    return tint(idle, REASONING_ACTIVE_RAIL, energy * 0.78)
+  })
   const inMinimal = createMemo(() => ctx.thinkingMode() === "hide")
   const duration = createMemo(() => {
     const end = props.part.time?.completed ?? props.message.time.completed
@@ -74,7 +92,7 @@ export function ReasoningPart(props: {
         <box
           border={!inMinimal() || expanded() ? ["left"] : undefined}
           customBorderChars={SplitBorder.customBorderChars}
-          borderColor={theme.decrease(theme.background.base)}
+          borderColor={railColor()}
           paddingLeft={!inMinimal() || expanded() ? 1 : 0}
         >
           <box onMouseUp={toggle}>
@@ -92,7 +110,7 @@ export function ReasoningPart(props: {
             <box
               border={["left"]}
               customBorderChars={SplitBorder.customBorderChars}
-              borderColor={theme.decrease(theme.background.base)}
+              borderColor={railColor()}
               paddingLeft={inMinimal() ? 3 : 1}
             >
               <code
@@ -139,7 +157,9 @@ function ReasoningHeader(props: {
     <Switch>
       <Match when={!props.done}>
         <box flexDirection="row">
-          <Spinner color={fg()}>{props.title ? "Thinking: " + props.title : "Thinking"}</Spinner>
+          <Spinner color={fg()} shimmer={REASONING_SHIMMER}>
+            {props.title ? "Thinking: " + props.title : "Thinking"}
+          </Spinner>
         </box>
       </Match>
       <Match when={true}>

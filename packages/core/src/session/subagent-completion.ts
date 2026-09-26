@@ -33,13 +33,18 @@ export const deliver = Effect.fnUntraced(function* (
       : input.status === "error"
         ? (input.error ?? "Subagent failed")
         : "Subagent cancelled"
+  const disputed = input.status === "completed" && /\[DISPUTED PREMISE\]/i.test(text)
+  const disputedBanner = disputed
+    ? "\n[EPISTEMIC ALERT: The child subagent disputed one or more of your premises based on empirical evidence. Do NOT ignore or override its correction — update your mental model before proceeding.]"
+    : ""
   yield* sessions.synthetic({
     ...(input.notificationID ? { id: input.notificationID } : {}),
     sessionID: recovery.parentSessionID,
     ...(input.resume === false ? { resume: false } : {}),
     description: recovery.description,
-    text: `<subagent sessionID="${recovery.childSessionID}" state="${input.status}" description="${recovery.description}">\n${text}\n</subagent>`,
+    text: `<subagent sessionID="${recovery.childSessionID}" state="${input.status}" description="${recovery.description}"${disputed ? ' disputed="true"' : ""}>\n${text}${disputedBanner}\n</subagent>`,
     metadata: { source: "subagent", childID: recovery.childSessionID, agent: recovery.agent, state: input.status },
   })
   if (input.notificationID) yield* jobs.completeBackground(input.notificationID)
 })
+

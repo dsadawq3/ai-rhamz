@@ -280,17 +280,17 @@ export function createFrames(options: KnightRiderOptions = {}): string[] {
     (options.color
       ? deriveTrailColors(options.color, options.trailSteps)
       : [
-          RGBA.fromHex("#ff0000"), // Brightest Red (Center)
-          RGBA.fromHex("#ff5555"), // Glare/Bloom
-          RGBA.fromHex("#dd0000"), // Trail 1
-          RGBA.fromHex("#aa0000"), // Trail 2
-          RGBA.fromHex("#770000"), // Trail 3
-          RGBA.fromHex("#440000"), // Trail 4
+          RGBA.fromHex("#dce6f7"), // Ice-Platinum Core
+          RGBA.fromHex("#28a4c4"), // Steel Cyan Glare
+          RGBA.fromHex("#8442c2"), // Royal Amethyst
+          RGBA.fromHex("#c4284e"), // Deep Crimson
+          RGBA.fromHex("#7a1c36"), // Dark Ruby Trail
+          RGBA.fromHex("#3d1020"), // Obsidian Fade
         ])
 
   const defaultColor =
     options.defaultColor ??
-    (options.color ? deriveInactiveColor(options.color, options.inactiveFactor) : RGBA.fromHex("#330000"))
+    (options.color ? deriveInactiveColor(options.color, options.inactiveFactor) : RGBA.fromHex("#1c1528"))
 
   const trailOptions = {
     colors,
@@ -342,17 +342,17 @@ export function createColors(options: KnightRiderOptions = {}): ColorGenerator {
     (options.color
       ? deriveTrailColors(options.color, options.trailSteps)
       : [
-          RGBA.fromHex("#ff0000"), // Brightest Red (Center)
-          RGBA.fromHex("#ff5555"), // Glare/Bloom
-          RGBA.fromHex("#dd0000"), // Trail 1
-          RGBA.fromHex("#aa0000"), // Trail 2
-          RGBA.fromHex("#770000"), // Trail 3
-          RGBA.fromHex("#440000"), // Trail 4
+          RGBA.fromHex("#dce6f7"), // Ice-Platinum Core
+          RGBA.fromHex("#28a4c4"), // Steel Cyan Glare
+          RGBA.fromHex("#8442c2"), // Royal Amethyst
+          RGBA.fromHex("#c4284e"), // Deep Crimson
+          RGBA.fromHex("#7a1c36"), // Dark Ruby Trail
+          RGBA.fromHex("#3d1020"), // Obsidian Fade
         ])
 
   const defaultColor =
     options.defaultColor ??
-    (options.color ? deriveInactiveColor(options.color, options.inactiveFactor) : RGBA.fromHex("#330000"))
+    (options.color ? deriveInactiveColor(options.color, options.inactiveFactor) : RGBA.fromHex("#1c1528"))
 
   const trailOptions = {
     colors,
