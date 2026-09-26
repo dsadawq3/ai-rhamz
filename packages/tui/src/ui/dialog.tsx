@@ -3,10 +3,7 @@ import {
   batch,
   createContext,
   createEffect,
-  createMemo,
-  createSignal,
   onCleanup,
-  onMount,
   Show,
   useContext,
   type JSX,
@@ -14,9 +11,7 @@ import {
 } from "solid-js"
 import { Keymap } from "../context/keymap"
 import { ThemeContextProvider, useTheme } from "../context/theme"
-import { tint } from "../theme/color"
-import { createAnimatable, tween } from "./animation"
-import { TabPulse } from "../component/tab-pulse"
+import { SplitBorder } from "./border"
 import { InputRenderable, MouseButton, Renderable, RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
@@ -24,16 +19,14 @@ import { useClipboard } from "../context/clipboard"
 import { useConfig } from "../config"
 import { copy, copyOnSelectRelease } from "../util/selection"
 
-const DIALOG_WAVE_CYAN = RGBA.fromHex("#28a4c4")
-const DIALOG_WAVE_AMETHYST = RGBA.fromHex("#8442c2")
-const DIALOG_WAVE_PEAK = RGBA.fromHex("#dce6f7")
+const DIALOG_BACKDROP = RGBA.fromInts(4, 5, 10, 150)
 
 export type DialogSize = "medium" | "large" | "xlarge"
 
 export function dialogWidth(size: DialogSize) {
   if (size === "xlarge") return 116
   if (size === "large") return 88
-  return 60
+  return 64
 }
 
 export function Dialog(
@@ -46,27 +39,6 @@ export function Dialog(
   const dimensions = useTerminalDimensions()
   const theme = useTheme().surface("dialog")
   const renderer = useRenderer()
-  const [pulseCount, setPulseCount] = createSignal(0)
-  const entrance = createAnimatable(
-    { backdrop: 0, flash: 1 },
-    { transition: tween({ duration: 0.26 }) },
-  )
-
-  onMount(() => {
-    entrance.animate({ backdrop: 1, flash: 0 })
-    setPulseCount((c) => c + 1)
-  })
-
-  const backdropColor = createMemo(() => {
-    const progress = entrance.value().backdrop
-    return RGBA.fromInts(4, 5, 10, Math.round(55 + 110 * progress))
-  })
-
-  const surfaceColor = createMemo(() => {
-    const flash = entrance.value().flash
-    if (flash <= 0.01) return theme.background.base
-    return tint(theme.background.base, DIALOG_WAVE_CYAN, flash * 0.18)
-  })
 
   let dismiss = false
   return (
@@ -88,10 +60,10 @@ export function Dialog(
         justifyContent={props.centered ? "center" : undefined}
         position="absolute"
         zIndex={3000}
-        paddingTop={props.centered ? 0 : dimensions().height / 4}
+        paddingTop={props.centered ? 0 : Math.floor(dimensions().height / 5)}
         left={0}
         top={0}
-        backgroundColor={backdropColor()}
+        backgroundColor={DIALOG_BACKDROP}
       >
         <box
           onMouseUp={(e: { stopPropagation(): void }) => {
@@ -103,19 +75,12 @@ export function Dialog(
           }}
           width={dialogWidth(props.size ?? "medium")}
           maxWidth={dimensions().width - 2}
-          backgroundColor={surfaceColor()}
+          border={["left", "right"]}
+          borderColor={theme.border.base}
+          customBorderChars={SplitBorder.customBorderChars}
+          backgroundColor={theme.background.base}
           paddingTop={1}
         >
-          <TabPulse
-            top={0}
-            active={false}
-            glow={false}
-            promptPulse={pulseCount()}
-            color={DIALOG_WAVE_CYAN}
-            glowColor={DIALOG_WAVE_AMETHYST}
-            flashColor={DIALOG_WAVE_PEAK}
-            backgroundColor={surfaceColor()}
-          />
           {props.children}
         </box>
       </box>

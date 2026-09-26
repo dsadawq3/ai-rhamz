@@ -11,21 +11,37 @@ export function make(tools: string[]) {
 
 export function render(prompt: string, tools: string[]) {
   const instructions: string[] = []
-  if (tools.includes("shell")) {
+  if (tools.includes("todowrite")) {
     instructions.push(
-      "- Prefer dedicated tools over shell commands; fall back to the shell when a tool cannot do what you need.",
-      "- Do not chain shell commands with separators like `echo \"====\";` or `printf '---'`; the output becomes noisy in a way that makes the user's side of the conversation worse.",
+      "- MANDATORY TODO LIST (`todowrite`): For any multi-step task (2+ actions, files, or phases), you MUST call `todowrite` first to create a structured checklist (`pending` / `in_progress` / `completed`), keep exactly the active step marked `in_progress`, and mark each step `completed` immediately as you finish it.",
+    )
+  }
+  if (tools.includes("read")) {
+    instructions.push(
+      "- MANDATORY NATIVE READ (`read`): Always use the `read` tool to inspect files. NEVER use `shell` (`cat`, `Get-Content`, `type`, `head`, `tail`, `python -c`) to read file contents.",
+    )
+  }
+  if (tools.includes("glob") || tools.includes("grep")) {
+    instructions.push(
+      "- MANDATORY NATIVE SEARCH (`glob` / `grep`): Always use `glob` to find files by name/pattern and `grep` to search file contents. NEVER use `shell` (`find`, `dir`, `ls -R`, `Select-String`, `grep`, `rg`) for file or text search.",
     )
   }
   if (tools.includes("write")) {
     instructions.push(
-      "- Use the write tool to create files or completely replace their content. Prefer using the edit tool for targeted changes.",
+      "- MANDATORY NATIVE WRITE (`write`): Always use the `write` tool to create new files or completely replace a file. NEVER use `shell` (`echo >`, `Set-Content`, `Out-File`, `cat <<EOF`, `python -c`) to write files.",
     )
   }
   if (tools.includes("edit")) {
     instructions.push(
-      "- Use the edit tool for targeted changes to existing text files. It replaces the exact text in `oldString` with `newString`, and the values must differ. By default, `oldString` must occur exactly once. If it occurs multiple times, include more surrounding context to make it unique or set `replaceAll` to true to replace every occurrence.",
+      "- MANDATORY NATIVE EDIT (`edit`): Always read the target file with `read` first, then use the `edit` tool for targeted modifications (`oldString` -> `newString`). NEVER use `shell` (`sed`, `awk`, PowerShell `.Replace`, `python -c`) to patch text files.",
+    )
+  }
+  if (tools.includes("shell")) {
+    instructions.push(
+      "- Reserve `shell` strictly for executing builds, test suites, compilers, git operations, network/recon utilities, or runtime scripts — never as a substitute for `read`, `write`, `edit`, `glob`, or `grep`.",
+      "- Do not chain shell commands with noisy separators like `echo \"====\";` or `printf '---'`.",
     )
   }
   return prompt.replace("${OPENCODE_TOOL_GUIDANCE}", instructions.join("\n"))
 }
+

@@ -1576,39 +1576,14 @@ export function Prompt(props: PromptProps) {
   createEffect(() => {
     if (agentLabel()) revealedPromptMetadata.add(local)
   })
-  const CYBER_AMETHYST = RGBA.fromHex("#8442c2")
-  const CYBER_CYAN = RGBA.fromHex("#28a4c4")
-  const CYBER_ICE = RGBA.fromHex("#dce6f7")
-  const [promptPulseCount, setPromptPulseCount] = createSignal(0)
-  const kineticBorder = createAnimatable(
-    { energy: 0, flash: 0 },
-    { enabled: animationsEnabled, transition: tween({ duration: 0.34 }) },
-  )
-  const triggerTypingPulse = () => {
-    if (!animationsEnabled()) return
-    const current = kineticBorder.value()
-    kineticBorder.jump({
-      energy: Math.min(1, current.energy + 0.38),
-      flash: current.flash,
-    })
-    kineticBorder.animate({ energy: 0, flash: 0 })
-  }
-  const triggerSubmitPulse = () => {
-    setPromptPulseCount((count) => count + 1)
-    if (!animationsEnabled()) return
-    kineticBorder.jump({ energy: 1, flash: 1 })
-    kineticBorder.animate({ energy: 0, flash: 0 })
-  }
+  const CYBER_AMETHYST = RGBA.fromHex("#7aa2f7")
+  const CYBER_CYAN = RGBA.fromHex("#7dcfff")
+  const CYBER_ICE = RGBA.fromHex("#c0caf5")
+  const triggerTypingPulse = () => {}
+  const triggerSubmitPulse = () => {}
   const borderHighlight = createMemo(() => {
     const base = tint(theme.border.base, highlight(), agentMetaAlpha())
-    if (muted()) return base
-    const { energy, flash } = kineticBorder.value()
-    if (energy <= 0.005 && flash <= 0.005) return base
-    const energized =
-      energy < 0.5
-        ? tint(base, CYBER_AMETHYST, energy * 2 * 0.75)
-        : tint(tint(base, CYBER_AMETHYST, 0.75), CYBER_CYAN, (energy - 0.5) * 2 * 0.85)
-    return flash > 0.005 ? tint(energized, CYBER_ICE, flash * 0.65) : energized
+    return base
   })
   const footerInput = () => ({
     sessionID: props.sessionID,
@@ -1785,7 +1760,7 @@ export function Prompt(props: PromptProps) {
             </Show>
             <kinetic_textarea
               width="100%"
-              kinetic={animationsEnabled()}
+              kinetic={false}
               bloomColor={CYBER_CYAN}
               wakeColor={CYBER_AMETHYST}
               backdropColor={promptBg()}
@@ -1922,28 +1897,7 @@ export function Prompt(props: PromptProps) {
                     horizontal: " ",
                   }
             }
-          >
-            <Show when={promptBg().a !== 0}>
-              <TabPulse
-                edge="below"
-                enabled={animationsEnabled()}
-                active={status() === "running" || kineticBorder.value().energy > 0.06}
-                outerActive={false}
-                promptPulse={promptPulseCount()}
-                outerPromptPulse={0}
-                complete={status() === "idle"}
-                outerComplete={false}
-                glow={kineticBorder.value().energy > 0.02}
-                outerGlow={false}
-                color={CYBER_CYAN}
-                glowColor={CYBER_AMETHYST}
-                flashColor={highlight()}
-                completionColor={RGBA.fromHex("#249e78")}
-                backgroundColor={promptBg()}
-                outerBackgroundColor={theme.background.base}
-              />
-            </Show>
-          </box>
+          />
         </box>
         <box width="100%" flexDirection="row" justifyContent="space-between" gap={2}>
           <Slot path="prompt.footer" input={footerInput()}>

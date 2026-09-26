@@ -79,10 +79,27 @@ export const Plugin = define({
         yield* Effect.logDebug("instruction file skipped", { path, reason: "unavailable" })
       })
 
+      const deduplicateInstructionFiles = (files: InstructionDiscovery.File[]) => {
+        const seenDirs = new Set<string>()
+        const seenContent = new Set<string>()
+        const out: InstructionDiscovery.File[] = []
+        for (const file of files) {
+          const dir = dirname(file.path)
+          const trimmed = file.content.trim()
+          if (!trimmed || seenDirs.has(dir) || seenContent.has(trimmed)) continue
+          seenDirs.add(dir)
+          seenContent.add(trimmed)
+          out.push(file)
+        }
+        return out
+      }
+
       const resolveFiles = Effect.fn("ConfigInstructionPlugin.resolveFiles")(function* () {
         const globalList = discovery.global
-          ? (yield* Effect.forEach(globalFiles, read, { concurrency: "unbounded" })).filter(
-              (file): file is InstructionDiscovery.File => file !== undefined,
+          ? deduplicateInstructionFiles(
+              (yield* Effect.forEach(globalFiles, read, { concurrency: "unbounded" })).filter(
+                (file): file is InstructionDiscovery.File => file !== undefined,
+              ),
             )
           : []
         if (!project) return { global: globalList, project: [] as InstructionDiscovery.File[] }
@@ -96,14 +113,18 @@ export const Plugin = define({
           return { global: globalList, project: Instructions.unavailable }
         return {
           global: globalList,
-          project: files.filter((file): file is InstructionDiscovery.File => file !== undefined),
+          project: deduplicateInstructionFiles(
+            files.filter((file): file is InstructionDiscovery.File => file !== undefined),
+          ),
         }
       })
 
       const globalSource = Effect.fn("ConfigInstructionPlugin.globalSource")(function* () {
         if (!discovery.global) return []
         const files = yield* Effect.forEach(globalFiles, read, { concurrency: "unbounded" })
-        return files.filter((file): file is InstructionDiscovery.File => file !== undefined)
+        return deduplicateInstructionFiles(
+          files.filter((file): file is InstructionDiscovery.File => file !== undefined),
+        )
       })
 
       const projectSource = Effect.fn("ConfigInstructionPlugin.projectSource")(function* () {
@@ -115,7 +136,9 @@ export const Plugin = define({
         const discovered = new Set(walked.filter((file) => discovery.global || !globalFileSet.has(file)))
         const files = yield* Effect.forEach(discovered, read, { concurrency: "unbounded" })
         if (files.some((file) => file === undefined)) return Instructions.unavailable
-        return files.filter((file): file is InstructionDiscovery.File => file !== undefined)
+        return deduplicateInstructionFiles(
+          files.filter((file): file is InstructionDiscovery.File => file !== undefined),
+        )
       })
 
       const isolate = <A, E, R>(source: string, effect: Effect.Effect<A, E, R>) =>

@@ -103,6 +103,7 @@ import {
   type SessionRow,
 } from "./rows"
 import { switchLabel } from "../../util/model"
+import { sessionFamily } from "../../util/session"
 import { findMessageBoundary, messageNavigationSlack } from "./message-navigation"
 import { stringWidth } from "../../util/string-width"
 import { useArgs } from "../../context/args"
@@ -230,7 +231,7 @@ export function Session(props: {
 
   const dimensions = useTerminalDimensions()
   const thinkingMode = createMemo<ThinkingMode>(() => config.session?.thinking ?? "hide")
-  const showScrollbar = createMemo(() => config.session?.scrollbar ?? false)
+  const showScrollbar = createMemo(() => config.session?.scrollbar ?? true)
   const markdownMode = createMemo(() => config.session?.markdown ?? "rendered")
   const diffWrapMode = createMemo(() => config.diffs?.wrap ?? "word")
   const groupExploration = createMemo(() => config.session?.grouping !== "none")
@@ -781,74 +782,159 @@ export function Session(props: {
     },
   ]
 
+  const keymap = Keymap.use()
+
+  const rootSession = createMemo(() => {
+    let curr = session()
+    while (curr?.parentID) {
+      const parent = data.session.get(curr.parentID)
+      if (!parent) break
+      curr = parent
+    }
+    return curr
+  })
+
+  const familyEntries = createMemo(() => {
+    const root = rootSession()
+    if (!root) return []
+    const children = sessionFamily<SessionInfo>(data.session.list(), root.id).map(({ session: child, prefix }) => {
+      const title = withTimestampedFallback(child)
+      const agentMatch = title.match(/@(\w+) subagent/)
+      const agent = child.agent
+        ? Locale.titlecase(child.agent)
+        : agentMatch
+          ? Locale.titlecase(agentMatch[1])
+          : "Subagent"
+      const depth = prefix.includes("│") || prefix.startsWith("   ") ? 2 : 1
+      return {
+        sessionID: child.id,
+        label: `${depth > 1 ? "↳" : ""}${agent}`,
+        title: agentMatch ? title.replace(agentMatch[0], "").trim() || title : title,
+        status: data.session.status(child.id),
+        current: child.id === route.sessionID,
+      }
+    })
+    if (children.length === 0) return []
+    return [
+      {
+        sessionID: root.id,
+        label: "◈ Root",
+        title: withTimestampedFallback(root),
+        status: data.session.status(root.id),
+        current: root.id === route.sessionID,
+      },
+      ...children,
+    ]
+  })
+
+  const latestTodos = createMemo(() => {
+    const msgs = messages()
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const msg = msgs[i]
+      if (msg?.type !== "assistant") continue
+      for (let j = msg.content.length - 1; j >= 0; j--) {
+        const part = msg.content[j]
+        if (part?.type !== "tool") continue
+        if (toolDisplay(part.name) !== "todo") continue
+        const meta = toolDisplayMetadata(part.state)
+        const rawTodos = Array.isArray(meta.todos)
+          ? meta.todos
+          : typeof part.state.input === "object" && part.state.input && Array.isArray((part.state.input as Record<string, unknown>).todos)
+            ? ((part.state.input as Record<string, unknown>).todos as unknown[])
+            : []
+        const items = parseTodoItems(rawTodos)
+        if (items.length > 0) return items
+      }
+    }
+    return []
+  })
+
+  const openTodoDialog = () => {
+    const todos = latestTodos()
+    if (todos.length === 0) return
+    dialog.replace(() => (
+      <DialogSelect
+        title={`Session TODO Checklist (${todos.filter((t) => t.status === "completed").length}/${todos.length} completed)`}
+        options={todos.map((item) => ({
+          title: `${todoStatusIcon(item.status)} ${item.content}`,
+          value: item.id,
+          footer: `${item.status.replace("_", " ")}${item.priority ? ` · ${item.priority}` : ""}`,
+        }))}
+        onSelect={() => dialog.clear()}
+      />
+    ))
+  }
+
+  function scrollToFirstMessage() {
+    if (firstJump()) return
+    clearMessageNavigation()
+    const request = new AbortController()
+    const cancel = () => request.abort()
+    setFirstJump(() => cancel)
+    const start = () => {
+      if (firstJump() !== cancel || scroll.isDestroyed) return
+      if (revealingOlderRows || revealingNewerRows || ensureAllRowsPending) return afterLayout(start)
+      const previous = { start: hiddenRows(), end: visibleRowsEnd() }
+      const restore = () => {
+        cancel()
+        batch(() => {
+          setHiddenRows(previous.start)
+          setVisibleRowsEnd(previous.end)
+        })
+      }
+      const commit = () => {
+        if (firstJump() !== restore || scroll.isDestroyed) return
+        scroll.stickyScroll = false
+        batch(() => {
+          setHiddenRows(0)
+          setVisibleRowsEnd(TRANSCRIPT_BACKFILL_CHUNK)
+          setFirstJump(() => cancel)
+        })
+      }
+      // Pin both ends until the head budget commits in the same batch as history.
+      batch(() => {
+        setFirstJump(() => restore)
+        setHiddenRows(hidden())
+        setVisibleRowsEnd(visibleEnd())
+      })
+      void data.session.message
+        .loadMore(route.sessionID, {
+          all: true,
+          signal: request.signal,
+          beforePublish: commit,
+        })
+        .then(
+          () => {
+            commit()
+            if (firstJump() !== cancel || scroll.isDestroyed) return
+            if (rows.length <= TRANSCRIPT_BACKFILL_CHUNK) setVisibleRowsEnd(undefined)
+            scroll.scrollTo(0)
+            afterLayout(() => {
+              if (firstJump() !== cancel) return
+              scroll.scrollTo(0)
+              setFirstJump(undefined)
+              updateAwayFromBottom()
+            })
+          },
+          (error) => {
+            if (firstJump() !== restore || scroll.isDestroyed) return
+            clearMessageNavigation()
+            toast.error(error)
+            updateAwayFromBottom()
+          },
+        )
+    }
+    prependHistory.after(start)
+    dialog.clear()
+  }
+
   const baseAndUnfocusedCommands = [
     {
       id: "session.first",
       title: "First message",
       group: "Session",
       palette: undefined,
-      run: () => {
-        if (firstJump()) return
-        clearMessageNavigation()
-        const request = new AbortController()
-        const cancel = () => request.abort()
-        setFirstJump(() => cancel)
-        const start = () => {
-          if (firstJump() !== cancel || scroll.isDestroyed) return
-          if (revealingOlderRows || revealingNewerRows || ensureAllRowsPending) return afterLayout(start)
-          const previous = { start: hiddenRows(), end: visibleRowsEnd() }
-          const restore = () => {
-            cancel()
-            batch(() => {
-              setHiddenRows(previous.start)
-              setVisibleRowsEnd(previous.end)
-            })
-          }
-          const commit = () => {
-            if (firstJump() !== restore || scroll.isDestroyed) return
-            scroll.stickyScroll = false
-            batch(() => {
-              setHiddenRows(0)
-              setVisibleRowsEnd(TRANSCRIPT_BACKFILL_CHUNK)
-              setFirstJump(() => cancel)
-            })
-          }
-          // Pin both ends until the head budget commits in the same batch as history.
-          batch(() => {
-            setFirstJump(() => restore)
-            setHiddenRows(hidden())
-            setVisibleRowsEnd(visibleEnd())
-          })
-          void data.session.message
-            .loadMore(route.sessionID, {
-              all: true,
-              signal: request.signal,
-              beforePublish: commit,
-            })
-            .then(
-              () => {
-                commit()
-                if (firstJump() !== cancel || scroll.isDestroyed) return
-                if (rows.length <= TRANSCRIPT_BACKFILL_CHUNK) setVisibleRowsEnd(undefined)
-                scroll.scrollTo(0)
-                afterLayout(() => {
-                  if (firstJump() !== cancel) return
-                  scroll.scrollTo(0)
-                  setFirstJump(undefined)
-                  updateAwayFromBottom()
-                })
-              },
-              (error) => {
-                if (firstJump() !== restore || scroll.isDestroyed) return
-                clearMessageNavigation()
-                toast.error(error)
-                updateAwayFromBottom()
-              },
-            )
-        }
-        prependHistory.after(start)
-        dialog.clear()
-      },
+      run: scrollToFirstMessage,
     },
     {
       id: "session.last",
@@ -1226,7 +1312,7 @@ export function Session(props: {
       id: "session.child.first",
       group: "Session",
       run: () => {
-        if (composer.open || session()?.parentID) setComposer("open", false)
+        if (composer.open && composer.tab === "subagents") setComposer("open", false)
         else setComposer({ open: true, tab: "subagents" })
         dialog.clear()
       },
@@ -1340,6 +1426,146 @@ export function Session(props: {
           paddingRight={dimensions().width < 44 ? 1 : 2}
         >
           <Show when={session()}>
+            <box
+              height={1}
+              flexShrink={0}
+              flexDirection="row"
+              justifyContent="space-between"
+              alignItems="center"
+              backgroundColor={theme.background.raised.base}
+              paddingLeft={1}
+              paddingRight={1}
+              marginBottom={1}
+            >
+              <box flexDirection="row" gap={1} flexShrink={1} overflow="hidden">
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={theme.background.raised.high}
+                  onMouseUp={() => keymap.dispatch("session.list")}
+                >
+                  <text fg={theme.text.base} wrapMode="none">
+                    ☰ Chats
+                  </text>
+                </box>
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={theme.background.raised.high}
+                  onMouseUp={() => keymap.dispatch("session.new")}
+                >
+                  <text fg={theme.text.action.primary.base} wrapMode="none">
+                    + New
+                  </text>
+                </box>
+                <Show when={familyEntries().length > 0}>
+                  <text fg={theme.border.base}>│</text>
+                  <For each={familyEntries().slice(0, 6)}>
+                    {(entry) => (
+                      <box
+                        paddingLeft={1}
+                        paddingRight={1}
+                        backgroundColor={entry.current ? theme.background.raised.max : theme.background.raised.base}
+                        onMouseUp={() => navigate({ type: "session", sessionID: entry.sessionID })}
+                      >
+                        <text
+                          fg={
+                            entry.current
+                              ? theme.text.base
+                              : entry.status === "running"
+                                ? theme.text.feedback.warning.base
+                                : theme.text.muted
+                          }
+                          attributes={entry.current ? TextAttributes.BOLD : undefined}
+                          wrapMode="none"
+                        >
+                          {entry.status === "running" ? "⟳ " : entry.current ? "▸ " : ""}
+                          {entry.label}
+                        </text>
+                      </box>
+                    )}
+                  </For>
+                  <box
+                    paddingLeft={1}
+                    paddingRight={1}
+                    backgroundColor={
+                      composer.open && composer.tab === "subagents"
+                        ? theme.background.raised.max
+                        : theme.background.raised.high
+                    }
+                    onMouseUp={() => {
+                      if (composer.open && composer.tab === "subagents") setComposer("open", false)
+                      else setComposer({ open: true, tab: "subagents" })
+                    }}
+                  >
+                    <text fg={theme.text.feedback.info.base} wrapMode="none">
+                      ⊞ Swarm ({familyEntries().length - 1})
+                    </text>
+                  </box>
+                </Show>
+              </box>
+              <box flexDirection="row" gap={1} flexShrink={0}>
+                <Show when={latestTodos().length > 0}>
+                  <box
+                    paddingLeft={1}
+                    paddingRight={1}
+                    backgroundColor={theme.background.raised.high}
+                    onMouseUp={openTodoDialog}
+                  >
+                    <text
+                      fg={
+                        latestTodos().every((t) => t.status === "completed")
+                          ? theme.text.feedback.success.base
+                          : theme.text.feedback.warning.base
+                      }
+                      wrapMode="none"
+                    >
+                      ☑ Todo {latestTodos().filter((t) => t.status === "completed").length}/{latestTodos().length}
+                    </text>
+                  </box>
+                </Show>
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={theme.background.raised.high}
+                  onMouseUp={() => scrollToFirstMessage()}
+                >
+                  <text fg={theme.text.muted} wrapMode="none">
+                    ⇈ Top
+                  </text>
+                </box>
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={theme.background.raised.high}
+                  onMouseUp={() => jumpByMessageOffset(-1)}
+                >
+                  <text fg={theme.text.base} wrapMode="none">
+                    ▲ Prev
+                  </text>
+                </box>
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={theme.background.raised.high}
+                  onMouseUp={() => jumpByMessageOffset(1)}
+                >
+                  <text fg={theme.text.base} wrapMode="none">
+                    ▼ Next
+                  </text>
+                </box>
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={awayFromBottom() ? theme.background.raised.max : theme.background.raised.high}
+                  onMouseUp={toBottom}
+                >
+                  <text fg={awayFromBottom() ? theme.text.feedback.info.base : theme.text.muted} wrapMode="none">
+                    ⇊ Latest
+                  </text>
+                </box>
+              </box>
+            </box>
             <box flexGrow={1} minHeight={0} position="relative">
               <scrollbox
                 ref={(r) => {
@@ -1417,20 +1643,15 @@ export function Session(props: {
               <Slot path="session.composer.top" input={{ sessionID: route.sessionID }} />
               <Composer
                 sessionID={route.sessionID}
-                open={composer.open || (!!session()?.parentID && forms().length === 0)}
+                open={composer.open}
                 defaultTab={composer.tab ?? (session()?.parentID ? "subagents" : undefined)}
                 onClose={() => {
-                  const parent = session()?.parentID
-                  if (parent) {
-                    navigate({ type: "session", sessionID: parent })
-                    return
-                  }
                   setComposer("open", false)
                 }}
                 visibleTerminalID={props.visibleTerminalID}
               />
               <Switch>
-                <Match when={composer.open || (!!session()?.parentID && forms().length === 0)}>{null}</Match>
+                <Match when={composer.open}>{null}</Match>
                 <Match when={promptedPermissions().length > 0}>
                   <Show when={promptedPermissions()[0]?.id} keyed>
                     {(_) => {
@@ -2408,6 +2629,9 @@ function ToolPart(props: { part: SessionMessageAssistantTool; images?: boolean }
       </Match>
       <Match when={display() === "skill"}>
         <Skill {...toolprops} />
+      </Match>
+      <Match when={display() === "todo"}>
+        <Todo {...toolprops} />
       </Match>
       <Match when={true}>
         <GenericTool {...toolprops} />
@@ -3438,6 +3662,117 @@ function Skill(props: ToolProps) {
       Skill "{name()}"
     </InlineTool>
   )
+}
+
+function Todo(props: ToolProps) {
+  const theme = useTheme()
+  const items = createMemo(() => {
+    const raw = Array.isArray(props.metadata.todos)
+      ? props.metadata.todos
+      : Array.isArray(props.input.todos)
+        ? props.input.todos
+        : []
+    return parseTodoItems(raw)
+  })
+  const completedCount = createMemo(() => items().filter((item) => item.status === "completed").length)
+  const inProgressCount = createMemo(() => items().filter((item) => item.status === "in_progress").length)
+
+  return (
+    <Show
+      when={items().length > 0}
+      fallback={
+        <InlineTool icon="☑" pending="Updating checklist…" complete={true} part={props.part}>
+          Todo checklist ({completedCount()}/{items().length})
+        </InlineTool>
+      }
+    >
+      <BlockTool
+        title={`# ☑ TODO Checklist (${completedCount()}/${items().length} completed${inProgressCount() > 0 ? ` · ${inProgressCount()} active` : ""})`}
+        part={props.part}
+        spinner={props.part.state.status === "streaming" || props.part.state.status === "running"}
+      >
+        <box flexDirection="column">
+          <For each={items()}>
+            {(item) => (
+              <box flexDirection="row" gap={1}>
+                <text
+                  flexShrink={0}
+                  fg={
+                    item.status === "completed"
+                      ? theme.text.feedback.success.base
+                      : item.status === "in_progress"
+                        ? theme.text.feedback.warning.base
+                        : item.status === "cancelled"
+                          ? theme.text.muted
+                          : theme.text.feedback.info.base
+                  }
+                >
+                  {todoStatusIcon(item.status)}
+                </text>
+                <text
+                  flexGrow={1}
+                  wrapMode="word"
+                  fg={
+                    item.status === "completed" || item.status === "cancelled"
+                      ? theme.text.muted
+                      : item.status === "in_progress"
+                        ? theme.text.base
+                        : theme.text.base
+                  }
+                  attributes={item.status === "in_progress" ? TextAttributes.BOLD : undefined}
+                >
+                  {item.content}
+                </text>
+                <Show when={item.priority === "high"}>
+                  <text flexShrink={0} fg={theme.text.feedback.error.base}>
+                    [high]
+                  </text>
+                </Show>
+              </box>
+            )}
+          </For>
+        </box>
+      </BlockTool>
+    </Show>
+  )
+}
+
+type TodoItemDisplay = {
+  id: string
+  content: string
+  status: "pending" | "in_progress" | "completed" | "cancelled"
+  priority?: "high" | "medium" | "low"
+}
+
+export function todoStatusIcon(status: TodoItemDisplay["status"]) {
+  if (status === "completed") return "[✓]"
+  if (status === "in_progress") return "[⟳]"
+  if (status === "cancelled") return "[-]"
+  return "[ ]"
+}
+
+export function parseTodoItems(value: unknown): TodoItemDisplay[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry, index) => {
+    const item = recordValue(entry)
+    if (!item) return []
+    const content = stringValue(item.content)
+    if (!content) return []
+    const rawStatus = stringValue(item.status)
+    const status: TodoItemDisplay["status"] =
+      rawStatus === "completed" || rawStatus === "in_progress" || rawStatus === "cancelled" ? rawStatus : "pending"
+    const rawPriority = stringValue(item.priority)
+    const priority: TodoItemDisplay["priority"] =
+      rawPriority === "high" || rawPriority === "medium" || rawPriority === "low" ? rawPriority : undefined
+    return [
+      {
+        id: stringValue(item.id) ?? String(index + 1),
+        content,
+        status,
+        priority,
+      },
+    ]
+  })
 }
 
 function Diagnostics(props: { diagnostics: unknown; filePath: string }) {

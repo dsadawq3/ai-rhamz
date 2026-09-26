@@ -31,32 +31,55 @@ export function SubagentsTab(props: { sessionID: string }) {
   const shortcuts = Keymap.useShortcuts()
 
   const session = createMemo(() => data.session.get(props.sessionID))
-  const [store, setStore] = createStore({ selected: 0, active: true })
+  const [store, setStore] = createStore({ selected: 0, onlyRunning: false })
+
+  const rootSession = createMemo(() => {
+    let curr = session()
+    while (curr?.parentID) {
+      const parent = data.session.get(curr.parentID)
+      if (!parent) break
+      curr = parent
+    }
+    return curr
+  })
 
   const entries = createMemo<SubagentEntry[]>(() => {
-    const current = session()
-    if (!current) return []
+    const root = rootSession()
+    if (!root) return []
 
-    const result = sessionFamily<SessionInfo>(data.session.list(), current.id).map(
-      ({ session, prefix }): SubagentEntry => {
-        const title = withTimestampedFallback(session)
+    const rootEntry: SubagentEntry = {
+      sessionID: root.id,
+      agent: root.agent ? `${Locale.titlecase(root.agent)} (Root)` : "Root Session",
+      title: withTimestampedFallback(root),
+      status: data.session.status(root.id),
+      current: root.id === route.sessionID,
+      prefix: "◈ ",
+    }
+
+    const children = sessionFamily<SessionInfo>(data.session.list(), root.id).map(
+      ({ session: child, prefix }): SubagentEntry => {
+        const title = withTimestampedFallback(child)
         const agentMatch = title.match(/@(\w+) subagent/)
         return {
-          sessionID: session.id,
-          agent: session.agent
-            ? Locale.titlecase(session.agent)
+          sessionID: child.id,
+          agent: child.agent
+            ? Locale.titlecase(child.agent)
             : agentMatch
               ? Locale.titlecase(agentMatch[1])
               : "Subagent",
           title: agentMatch ? title.replace(agentMatch[0], "").trim() || title : title,
-          status: data.session.status(session.id),
-          current: session.id === route.sessionID,
-          prefix,
+          status: data.session.status(child.id),
+          current: child.id === route.sessionID,
+          prefix: `  ${prefix}`,
         }
       },
     )
 
-    return result.filter((entry) => (store.active ? entry.status === "running" : entry.status !== "running"))
+    const filteredChildren = store.onlyRunning
+      ? children.filter((entry) => entry.status === "running")
+      : children
+
+    return children.length > 0 ? [rootEntry, ...filteredChildren] : []
   })
 
   let selectedSessionID = ""
@@ -70,7 +93,7 @@ export function SubagentsTab(props: { sessionID: string }) {
     if (!active) {
       if (wasActive) {
         selectedSessionID = ""
-        setStore({ selected: 0, active: true })
+        setStore({ selected: 0, onlyRunning: false })
       }
       wasActive = false
       return
@@ -113,16 +136,17 @@ export function SubagentsTab(props: { sessionID: string }) {
   onMount(() => {
     const cleanup = composer.register({
       id: "subagents",
-      label: "Subagents",
+      label: "Swarm Tree",
       hints: () => {
         const entry = selectedEntry()
         return [
+          { label: "open", shortcut: "enter/click" },
           ...(entry?.status === "running"
             ? [{ label: "interrupt", shortcut: shortcuts.get("composer.subagent.interrupt") ?? "" }]
             : []),
           {
-            label: `show ${store.active ? "inactive" : "active"}`,
-            shortcut: shortcuts.get("composer.subagent.toggle-activity") ?? "",
+            label: store.onlyRunning ? "show all" : "running only",
+            shortcut: shortcuts.get("composer.subagent.toggle-activity") ?? "ctrl+a",
           },
         ]
       },
@@ -163,7 +187,10 @@ export function SubagentsTab(props: { sessionID: string }) {
         group: "Composer",
         run() {
           const entry = entries()[store.selected]
-          if (entry) navigate({ type: "session", sessionID: entry.sessionID })
+          if (entry) {
+            navigate({ type: "session", sessionID: entry.sessionID })
+            composer.close()
+          }
         },
       },
       {
@@ -172,7 +199,7 @@ export function SubagentsTab(props: { sessionID: string }) {
         group: "Composer",
         bind: "ctrl+a",
         run() {
-          setStore({ selected: 0, active: !store.active })
+          setStore({ selected: 0, onlyRunning: !store.onlyRunning })
           scroll?.scrollTo(0)
         },
       },
@@ -191,17 +218,18 @@ export function SubagentsTab(props: { sessionID: string }) {
 
   return (
     <Show when={composer.active("subagents")}>
-      <scrollbox scrollbarOptions={{ visible: false }} maxHeight={5} ref={(r: ScrollBoxRenderable) => (scroll = r)}>
+      <scrollbox scrollbarOptions={{ visible: entries().length > 8 }} maxHeight={8} ref={(r: ScrollBoxRenderable) => (scroll = r)}>
         <Show
           when={entries().length > 0}
-          fallback={<text fg={theme.text.muted}> No {store.active ? "active" : "inactive"} subagents</text>}
+          fallback={<text fg={theme.text.muted}> No subagents spawned in this session yet</text>}
         >
           <For each={entries()}>
             {(entry, index) => {
               const active = createMemo(() => index() === store.selected)
-              const status = createMemo(() => {
-                if (entry.status === "running") return "Running"
-                return ""
+              const statusLabel = createMemo(() => {
+                if (entry.status === "running") return "● Running"
+                if (entry.current) return "◉ Current"
+                return "✓ Done"
               })
               return (
                 <box
@@ -219,6 +247,7 @@ export function SubagentsTab(props: { sessionID: string }) {
                   onMouseUp={() => {
                     setStore("selected", index())
                     navigate({ type: "session", sessionID: entry.sessionID })
+                    composer.close()
                   }}
                 >
                   <box flexGrow={1} minWidth={0} flexDirection="row">
@@ -230,18 +259,25 @@ export function SubagentsTab(props: { sessionID: string }) {
                             ? theme.text.action.primary.selected
                             : theme.text.action.primary.base
                       }
-                      attributes={active() ? TextAttributes.BOLD : undefined}
+                      attributes={active() || entry.current ? TextAttributes.BOLD : undefined}
                       wrapMode="none"
                     >
                       {entry.prefix}
                       {entry.agent}: {entry.title}
                     </text>
                   </box>
-                  <Show when={status()}>
-                    <text fg={active() ? theme.text.action.primary.focused : theme.text.muted} wrapMode="none">
-                      {status()}
-                    </text>
-                  </Show>
+                  <text
+                    fg={
+                      entry.status === "running"
+                        ? theme.text.feedback.info.base
+                        : active()
+                          ? theme.text.action.primary.focused
+                          : theme.text.muted
+                    }
+                    wrapMode="none"
+                  >
+                    {statusLabel()}
+                  </text>
                 </box>
               )
             }}
@@ -251,3 +287,4 @@ export function SubagentsTab(props: { sessionID: string }) {
     </Show>
   )
 }
+

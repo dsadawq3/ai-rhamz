@@ -2,6 +2,7 @@ export function canonicalToolName(name: string) {
   if (name === "bash") return "shell"
   if (name === "task") return "subagent"
   if (name === "apply_patch") return "patch"
+  if (name === "todowrite" || name === "todoread") return "todo"
   return name
 }
 

@@ -1,6 +1,7 @@
-import { createMemo, createSignal } from "solid-js"
+import { TextAttributes } from "@opentui/core"
+import { createMemo, createSignal, For } from "solid-js"
 import { useConfig } from "../config"
-import { useThemes } from "../context/theme"
+import { useTheme, useThemes } from "../context/theme"
 import { DialogSelect } from "../ui/dialog-select"
 import { useToast } from "../ui/toast"
 
@@ -30,7 +31,7 @@ export const settings: Setting[] = [
     title: "Color mode",
     category: "Appearance",
     path: ["theme", "mode"],
-    default: "system",
+    default: "dark",
     values: ["system", "dark", "light"],
     keywords: ["dark mode", "light mode", "system theme"],
   },
@@ -55,7 +56,7 @@ export const settings: Setting[] = [
     title: "Scrollbar",
     category: "Session",
     path: ["session", "scrollbar"],
-    default: false,
+    default: true,
     values: [false, true],
     labels: ["off", "on"],
     keywords: ["scroll bar"],
@@ -64,7 +65,7 @@ export const settings: Setting[] = [
     title: "Thinking",
     category: "Session",
     path: ["session", "thinking"],
-    default: "hide",
+    default: "show",
     values: ["hide", "show"],
     keywords: ["reasoning", "chain of thought"],
   },
@@ -115,7 +116,7 @@ export const settings: Setting[] = [
     title: "Permissions",
     category: "Session",
     path: ["session", "permissions"],
-    default: "prompt",
+    default: "autoaccept",
     values: ["prompt", "autoaccept"],
     labels: ["prompt", "auto accept"],
     keywords: ["approve", "accept", "permission requests"],
@@ -190,7 +191,7 @@ export const settings: Setting[] = [
     title: "Scroll speed",
     category: "Input",
     path: ["scroll", "speed"],
-    default: 3,
+    default: 5,
     step: 0.25,
     min: 0.25,
     max: 10,
@@ -201,7 +202,7 @@ export const settings: Setting[] = [
     title: "Acceleration",
     category: "Input",
     path: ["scroll", "acceleration"],
-    default: false,
+    default: true,
     values: [false, true],
     labels: ["off", "on"],
     keywords: ["scroll acceleration"],
@@ -309,6 +310,8 @@ export const settings: Setting[] = [
   },
 ]
 
+const CATEGORIES = ["All", ...Array.from(new Set(settings.map((s) => s.category)))]
+
 export function settingID(setting: Setting) {
   return setting.path.join(".")
 }
@@ -317,11 +320,13 @@ export function DialogConfig(props: { current?: string }) {
   const config = useConfig()
   const toast = useToast()
   const themes = useThemes()
+  const theme = useTheme().surface("dialog")
   const current = Math.max(
     0,
     settings.findIndex((setting) => settingID(setting) === props.current),
   )
   const [selected, setSelected] = createSignal(current)
+  const [activeCategory, setActiveCategory] = createSignal<string>("All")
   const [saving, setSaving] = createSignal(false)
 
   const value = (setting: Setting) => {
@@ -338,23 +343,34 @@ export function DialogConfig(props: { current?: string }) {
       : setting.values
   const display = (setting: Setting) => {
     const current = value(setting)
-    if (setting.format) return setting.format(current)
+    if (setting.format) return `◂ ${setting.format(current)} ▸`
     const index = setting.values?.indexOf(current)
-    return index === undefined || index < 0 ? String(current) : (setting.labels?.[index] ?? String(current))
+    const label = index === undefined || index < 0 ? String(current) : (setting.labels?.[index] ?? String(current))
+    return `◂ ${label} ▸`
   }
-  const options = createMemo(() =>
-    settings.map((setting, index) => ({
-      title: setting.title,
-      category: setting.category,
-      searchText: setting.keywords?.join(" "),
-      footer: display(setting),
-      value: index,
-    })),
-  )
+  const options = createMemo(() => {
+    const cat = activeCategory()
+    return settings
+      .map((setting, index) => ({
+        title: setting.title,
+        category: cat === "All" ? setting.category : undefined,
+        searchText: setting.keywords?.join(" "),
+        footer: display(setting),
+        value: index,
+      }))
+      .filter((_, index) => cat === "All" || settings[index]?.category === cat)
+  })
+
+  function cycleCategory(delta: 1 | -1) {
+    const idx = CATEGORIES.indexOf(activeCategory())
+    const next = CATEGORIES[(idx + delta + CATEGORIES.length) % CATEGORIES.length]
+    setActiveCategory(next)
+  }
 
   async function change(direction: number, index = selected()) {
     if (saving()) return
     const setting = settings[index]
+    if (!setting) return
     const current = value(setting)
     const choices = values(setting)
     const next = choices
@@ -377,12 +393,45 @@ export function DialogConfig(props: { current?: string }) {
   return (
     <DialogSelect
       title="Settings"
+      titleView={
+        <box flexDirection="column" gap={1} flexGrow={1}>
+          <text fg={theme.text.base} attributes={TextAttributes.BOLD}>
+            Settings
+          </text>
+          <box flexDirection="row" gap={1} flexWrap="wrap">
+            <For each={CATEGORIES}>
+              {(cat) => {
+                const isCurrent = () => activeCategory() === cat
+                return (
+                  <box
+                    paddingLeft={1}
+                    paddingRight={1}
+                    backgroundColor={isCurrent() ? theme.background.raised.max : theme.background.raised.high}
+                    onMouseUp={() => setActiveCategory(cat)}
+                  >
+                    <text
+                      fg={isCurrent() ? theme.text.base : theme.text.muted}
+                      attributes={isCurrent() ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                    >
+                      {cat}
+                    </text>
+                  </box>
+                )
+              }}
+            </For>
+          </box>
+        </box>
+      }
       options={options()}
       current={current}
       filterThreshold={0.7}
       onMove={(option) => setSelected(option.value)}
       onSelect={(option) => void change(1, option.value)}
-      footerHints={[{ title: "←/→", label: "change" }]}
+      footerHints={[
+        { title: "←/→", label: "change" },
+        { title: "tab", label: "category" },
+      ]}
       bindings={[
         {
           bind: "left",
@@ -395,6 +444,18 @@ export function DialogConfig(props: { current?: string }) {
           title: "Next value",
           group: "Settings",
           run: () => void change(1),
+        },
+        {
+          bind: "tab",
+          title: "Next category tab",
+          group: "Settings",
+          run: () => cycleCategory(1),
+        },
+        {
+          bind: "shift+tab",
+          title: "Previous category tab",
+          group: "Settings",
+          run: () => cycleCategory(-1),
         },
       ]}
     />

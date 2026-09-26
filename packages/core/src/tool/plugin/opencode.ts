@@ -195,7 +195,135 @@ export const Plugin = {
               }
             }).pipe(Effect.mapError((error) => new ToolFailure({ message: "Unable to list models", error }))),
         })
+        draft.add({
+          name: "todowrite",
+          description:
+            "Create and update the structured task checklist (TODO list) for the current session. ALWAYS use this tool at the start of any multi-step task to plan steps, mark the active step as 'in_progress', and mark completed steps as 'completed'. Pass the full updated list of todos on each call.",
+          input: TodoWriteInput,
+          output: TodoListOutput,
+          options: { codemode: false },
+          execute: (input, context) =>
+            Effect.sync(() => {
+              const items = input.todos.map((item, idx) => ({
+                id: item.id?.trim() || String(idx + 1),
+                content: item.content.trim(),
+                status: item.status,
+                priority: item.priority ?? ("medium" as const),
+              }))
+              sessionTodos.set(context.sessionID, items)
+              const completed = items.filter((t) => t.status === "completed").length
+              const formatted = items
+                .map((t) => {
+                  const box =
+                    t.status === "completed"
+                      ? "[x]"
+                      : t.status === "in_progress"
+                        ? "[>]"
+                        : t.status === "cancelled"
+                          ? "[-]"
+                          : "[ ]"
+                  return `${box} (${t.id}) [${t.priority}] ${t.content}`
+                })
+                .join("\n")
+              return {
+                output: {
+                  todos: items,
+                  completed,
+                  total: items.length,
+                },
+                content: `Updated session TODO list (${completed}/${items.length} completed):\n${formatted}`,
+                metadata: {
+                  todos: items,
+                  completed,
+                  total: items.length,
+                },
+              }
+            }),
+        })
+        draft.add({
+          name: "todoread",
+          description: "Read the current session's structured TODO checklist.",
+          input: Schema.Struct({}),
+          output: TodoListOutput,
+          options: { codemode: false },
+          execute: (_input, context) =>
+            Effect.sync(() => {
+              const items = sessionTodos.get(context.sessionID) ?? []
+              const completed = items.filter((t) => t.status === "completed").length
+              const formatted =
+                items.length === 0
+                  ? "No active TODO items in this session."
+                  : items
+                      .map((t) => {
+                        const box =
+                          t.status === "completed"
+                            ? "[x]"
+                            : t.status === "in_progress"
+                              ? "[>]"
+                              : t.status === "cancelled"
+                                ? "[-]"
+                                : "[ ]"
+                        return `${box} (${t.id}) [${t.priority}] ${t.content}`
+                      })
+                      .join("\n")
+              return {
+                output: {
+                  todos: items,
+                  completed,
+                  total: items.length,
+                },
+                content: formatted,
+                metadata: {
+                  todos: items,
+                  completed,
+                  total: items.length,
+                },
+              }
+            }),
+        })
       })
       .pipe(Effect.orDie)
   }),
 }
+
+export const TodoItemSchema = Schema.Struct({
+  id: Schema.optionalKey(Schema.String).annotate({ description: "Short unique step ID (e.g. '1', '2', 'recon-1')" }),
+  content: Schema.String.check(Schema.isMinLength(1)).annotate({
+    description: "Clear actionable description of the step",
+  }),
+  status: Schema.Literals(["pending", "in_progress", "completed", "cancelled"]).annotate({
+    description: "Current execution state of the step",
+  }),
+  priority: Schema.optionalKey(Schema.Literals(["high", "medium", "low"])).annotate({
+    description: "Step priority (defaults to 'medium')",
+  }),
+})
+
+export type TodoItem = {
+  id: string
+  content: string
+  status: "pending" | "in_progress" | "completed" | "cancelled"
+  priority: "high" | "medium" | "low"
+}
+
+export const TodoWriteInput = Schema.Struct({
+  todos: Schema.Array(TodoItemSchema).annotate({
+    description: "The complete updated list of TODO items for this session.",
+  }),
+})
+
+const TodoOutputItem = Schema.Struct({
+  id: Schema.String,
+  content: Schema.String,
+  status: Schema.Literals(["pending", "in_progress", "completed", "cancelled"]),
+  priority: Schema.Literals(["high", "medium", "low"]),
+})
+
+export const TodoListOutput = Schema.Struct({
+  todos: Schema.Array(TodoOutputItem),
+  completed: Schema.Int,
+  total: Schema.Int,
+})
+
+const sessionTodos = new Map<string, TodoItem[]>()
+

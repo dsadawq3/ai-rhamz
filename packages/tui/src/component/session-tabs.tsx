@@ -1509,6 +1509,11 @@ function HorizontalSessionTabs(props: {
       position="relative"
       flexDirection="row"
       zIndex={1}
+      onMouseScroll={(event) => {
+        const dir = event.scroll?.direction
+        if (dir === "up" || dir === "left") tabs.cycle(-1)
+        else if (dir === "down" || dir === "right") tabs.cycle(1)
+      }}
       onMouseOut={(event) => {
         marquee.leaveHovered()
         if (!strip) return
@@ -1531,7 +1536,12 @@ function HorizontalSessionTabs(props: {
       onMouseDragEnd={release}
     >
       <Show when={layout().before > 0}>
-        <text width={sessionTabOverflowWidth(layout().before)} fg={theme.text.muted} selectable={false}>
+        <text
+          width={sessionTabOverflowWidth(layout().before)}
+          fg={theme.text.base}
+          selectable={false}
+          onMouseUp={() => tabs.cycle(-1)}
+        >
           ‹{layout().before}
         </text>
       </Show>
@@ -1737,7 +1747,12 @@ function HorizontalSessionTabs(props: {
         }}
       </For>
       <Show when={layout().after > 0}>
-        <text width={sessionTabOverflowWidth(layout().after)} fg={theme.text.muted} selectable={false}>
+        <text
+          width={sessionTabOverflowWidth(layout().after)}
+          fg={theme.text.base}
+          selectable={false}
+          onMouseUp={() => tabs.cycle(1)}
+        >
           {" " + layout().after}›
         </text>
       </Show>

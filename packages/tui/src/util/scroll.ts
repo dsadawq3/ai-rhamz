@@ -8,13 +8,26 @@ export type ScrollConfig = {
 }
 
 export class CustomSpeedScroll implements ScrollAcceleration {
+  private lastTick = 0
+  private streak = 0
+
   constructor(private speed: number) {}
 
-  tick(_now?: number): number {
-    return this.speed
+  tick(now = Date.now()): number {
+    const dt = now - this.lastTick
+    this.lastTick = now
+    if (dt > 0 && dt < 95) {
+      this.streak = Math.min(8, this.streak + 1)
+    } else if (dt > 180) {
+      this.streak = 0
+    }
+    return Math.min(16, this.speed + Math.floor(this.streak * 1.3))
   }
 
-  reset(): void {}
+  reset(): void {
+    this.streak = 0
+    this.lastTick = 0
+  }
 }
 
 export function getScrollAcceleration(config?: ScrollConfig): ScrollAcceleration {
@@ -25,5 +38,6 @@ export function getScrollAcceleration(config?: ScrollConfig): ScrollAcceleration
     return new CustomSpeedScroll(config.scroll.speed)
   }
 
-  return new CustomSpeedScroll(3)
+  return new CustomSpeedScroll(5)
 }
+

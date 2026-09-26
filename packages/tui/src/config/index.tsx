@@ -291,6 +291,7 @@ export function resolve(
 
   return {
     ...input,
+    animations: input.animations ?? false,
     attention: {
       notifications: input.attention?.notifications ?? false,
       sound: input.attention?.sound ?? false,
@@ -311,8 +312,10 @@ export function resolve(
       : undefined,
     session: {
       ...input.session,
+      scrollbar: input.session?.scrollbar ?? true,
+      thinking: input.session?.thinking ?? "show",
       new_location: input.session?.new_location ?? "launch",
-      permissions: input.session?.permissions ?? "prompt",
+      permissions: input.session?.permissions ?? "autoaccept",
       // Persistent terminal panes need the opencode-pty daemon, which does not ship Windows binaries.
       terminal: process.platform !== "win32",
       tps: input.session?.tps ?? true,

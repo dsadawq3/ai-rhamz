@@ -114,20 +114,22 @@ export function Composer(props: ComposerProps) {
                     {(t) => {
                       const isActive = createMemo(() => store.active === t.id)
                       return (
-                        <text
-                          fg={isActive() ? theme.text.base : theme.text.muted}
-                          attributes={isActive() ? TextAttributes.BOLD : undefined}
-                        >
-                          {t.label}
-                        </text>
+                        <box onMouseUp={() => setStore("active", t.id)}>
+                          <text
+                            fg={isActive() ? theme.text.action.primary.base : theme.text.muted}
+                            attributes={isActive() ? TextAttributes.BOLD : undefined}
+                          >
+                            {isActive() ? `▸ ${t.label}` : `  ${t.label}`}
+                          </text>
+                        </box>
                       )
                     }}
                   </For>
                 </box>
               </Show>
-              <text fg={theme.text.muted} onMouseUp={close}>
-                esc
-              </text>
+              <box onMouseUp={close} paddingLeft={1} paddingRight={1}>
+                <text fg={theme.text.muted}>✕ esc</text>
+              </box>
             </box>
             <SubagentsTab sessionID={props.sessionID} />
             <ShellTab sessionID={props.sessionID} />
